@@ -1,1 +1,8 @@
-
+Meeting 29.10 - 3pm
+  Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah
+  - decided group name: CTRL Freaks
+  - sent whentomeet
+  - decided weekly meetings
+  - ask if have to use common Azure instance
+  roles: everyone participating in decision making
+  
