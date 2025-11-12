@@ -7,7 +7,7 @@ Meeting 29.10 - 3pm
   roles: everyone participating in decision making
   
 Meeting 05.11 
-  Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Qiming Nie
+  Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Qiming Nie, Ritik Saxena
   - download and understand the collection
   - look at out scores from previous assignment and choose best as base code to build on top of
   - look at existing solutions from previous years
