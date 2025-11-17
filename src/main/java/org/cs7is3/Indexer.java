@@ -7,6 +7,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Array;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 
@@ -44,72 +45,28 @@ import org.apache.lucene.store.FSDirectory;
 //   indexer.buildIndex(Path docsPath, Path indexPath)
 
 public class Indexer {
-    public String docsPath = "";
-    public String indexPath = "";
-    public Analyzer analyzer;
 
-    public void buildIndex() throws java.io.IOException {
-        String targetPath = indexPath + "/" + analyzer.getClass().getSimpleName();
-        Directory directory = FSDirectory.open(Paths.get(targetPath));
+    //default analyzer in case none is provided
+    public Analyzer analyzer = new EnglishAnalyzer();
+
+    //constructor to set analyzer
+    public Indexer(Analyzer analyzer) {
+        this.analyzer = analyzer;
+    }
+
+    public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {;
+        //create index writer
+        Directory directory = FSDirectory.open(Paths.get(indexPath.toString()));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         OpenMode mode = OpenMode.CREATE;
         config.setOpenMode(mode);
         IndexWriter writer = new IndexWriter(directory, config);
 
-        FileInputStream file = new FileInputStream(docsPath);
+        //open document collection
+        FileInputStream file = new FileInputStream(docsPath.toString());
         BufferedReader reader = new BufferedReader(new InputStreamReader(file));
+        
 
-        String currentLine = "";
-        String currentField = "";
-        StringBuilder currentContent = new StringBuilder();
-        ArrayList<Document> documents = new ArrayList<>();
 
-        Document doc = new Document();
-
-        currentLine = reader.readLine();
-        while (currentLine != null) {
-            if(currentLine.startsWith(".I")){
-                if(currentField != ""){
-                    doc.add(new TextField(currentField, currentContent.toString().trim(), TextField.Store.YES));
-                    documents.add(doc);
-                    currentContent.setLength(0);
-                }
-                doc = new Document();
-                currentField = "id";
-                doc.add(new TextField(currentField, currentLine.substring(3).trim(), TextField.Store.YES));
-            }else if(currentLine.startsWith(".T")){
-                currentField = "title";
-            }else if(currentLine.startsWith(".A")){
-                if(currentField != "author"){
-                    doc.add(new TextField(currentField, currentContent.toString().trim(), TextField.Store.YES));
-                    currentContent.setLength(0);
-                }
-                currentField = "author";
-            }else if(currentLine.startsWith(".B")){
-                if(currentField != "bibliography"){
-                    doc.add(new TextField(currentField, currentContent.toString().trim(), TextField.Store.YES));
-                    currentContent.setLength(0);
-                }
-                currentField = "bibliography";
-            }else if(currentLine.startsWith(".W")){
-                if(currentField != "content"){
-                    doc.add(new TextField(currentField, currentContent.toString().trim(), TextField.Store.YES));
-                    currentContent.setLength(0);
-                }
-                currentField = "content";
-            }else{
-                currentContent.append(currentLine).append(" ");
-            }
-            currentLine = reader.readLine();
-        }
-        documents.add(doc);
-
-        writer.addDocuments(documents);
-
-        reader.close();
-        writer.close();
-        file.close();
-        directory.close();
-        System.out.printf("Indexing completed. Indeexed %d documents.\n", documents.size());
     }
 }
