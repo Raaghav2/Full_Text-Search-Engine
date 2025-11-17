@@ -14,3 +14,15 @@ Meeting 05.11
   - goals for before next meeting: get to know the code from all the examples we selected, agree on starting base code
 roles: everyone contributing with their results for the assignment 1, Shreya and Raaghav - looking for existing previous solutions, Qiming - best results for a1, likely base code
 
+Meeting 12.11
+Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Qiming Nie, Ritik Saxena
+  - compiled a list of possible approaches for analyzers and indexing
+  - split the coding tasks
+  roles: analyzers discussion, reasearching the possible indexing and analyzers techniques
+
+Meeting 17.11.25
+Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
+  - discuss progress
+  - schedule a push to main
+  - confirm next steps
+roles: research and discussion on best approaches moving forward
