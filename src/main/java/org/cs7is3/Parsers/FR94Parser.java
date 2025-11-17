@@ -27,7 +27,7 @@ public class FR94Parser {
             .replace("\n", " ").replace("\r", " ").replaceAll("\\s+", " ");
     }
 
-    public static ArrayList<Document> parseCorpus(String filesPath) throws IOException {
+    public static ArrayList<Document> parseFR94(String filesPath) throws IOException {
         FR94documents.clear();
         File rootDir = Paths.get(filesPath).toFile();
         processDirectory(rootDir); 

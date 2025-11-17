@@ -31,6 +31,10 @@ import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.cs7is3.Parsers.FBISParser;
+import org.cs7is3.Parsers.FR94Parser;
+import org.cs7is3.Parsers.FTParser;
+import org.cs7is3.Parsers.LATimesParser;
 
 // TODO: Implement your Lucene indexer
 // This class should build a Lucene index from the document collection
@@ -62,10 +66,49 @@ public class Indexer {
         config.setOpenMode(mode);
         IndexWriter writer = new IndexWriter(directory, config);
 
-        //open document collection
-        FileInputStream file = new FileInputStream(docsPath.toString());
-        BufferedReader reader = new BufferedReader(new InputStreamReader(file));
+        ArrayList<Document> documentsToIndex = new ArrayList<>();
         
+        System.out.println("Starting direct multi-corpus parsing...");
+        long totalDocs = 0;
+        
+        Path fbisPath = docsPath.resolve("fbis");
+        System.out.println("Processing FBIS documents at: " + fbisPath);
+        new FBISParser();
+        ArrayList<Document> fbisDocs = FBISParser.parseFBIS(fbisPath.toString()); 
+        documentsToIndex.addAll(fbisDocs);
+        totalDocs += fbisDocs.size();
+        System.out.printf("-> %d FBIS documents parsed.%n", fbisDocs.size());
+
+        Path fr94Path = docsPath.resolve("fr94");
+        System.out.println("Processing FR94 documents at: " + fr94Path);
+        new FR94Parser();
+        ArrayList<Document> fr94Docs = FR94Parser.parseFR94(fr94Path.toString()); 
+        documentsToIndex.addAll(fr94Docs);
+        totalDocs += fr94Docs.size();
+        System.out.printf("-> %d FR94 documents parsed.%n", fr94Docs.size());
+
+        Path ftPath = docsPath.resolve("ft");
+        System.out.println("Processing FT documents at: " + ftPath);
+        new FTParser();
+        ArrayList<Document> ftDocs = FTParser.parseFT(ftPath.toString()); 
+        documentsToIndex.addAll(ftDocs);
+        totalDocs += ftDocs.size();
+        System.out.printf("-> %d FT documents parsed.%n", ftDocs.size());
+
+        Path latimesPath = docsPath.resolve("latimes");
+        System.out.println("Processing LA Times documents at: " + latimesPath);
+        new LATimesParser();
+        ArrayList<Document> latimesDocs = LATimesParser.parseLATimes(latimesPath.toString()); 
+        documentsToIndex.addAll(latimesDocs);
+        totalDocs += latimesDocs.size();
+        System.out.printf("-> %d LA Times documents parsed.%n", latimesDocs.size());
+
+        System.out.printf("%nTotal documents to index: %d%n", totalDocs);
+        writer.addDocuments(documentsToIndex);
+
+        writer.close();
+        directory.close();
+        System.out.println("Indexing complete. Index created at: " + indexPath);
 
 
     }

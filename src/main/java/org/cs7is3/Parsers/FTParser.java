@@ -27,7 +27,7 @@ public class FTParser {
             .replace("\n", " ").replace("\r", " ").replaceAll("\\s+", " ");
     }
 
-    public static ArrayList<Document> parseCorpus(String filesPath) throws IOException {
+    public static ArrayList<Document> parseFT(String filesPath) throws IOException {
         FTdocuments.clear();
         File rootDir = Paths.get(filesPath).toFile();
         processDirectory(rootDir); 
