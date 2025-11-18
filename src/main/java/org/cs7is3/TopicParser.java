@@ -1,74 +1,77 @@
 package org.cs7is3;
-import java.io.BufferedReader;
-import java.io.FileReader;
+
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 public class TopicParser {
+
     public static class Topic {
-        public String number;
-        public String title;
-        public String description;
-        public String narrative;
+        public final String number;
+        public final String title;
+        public final String description;
+        public final String narrative;
+
         public Topic(String number, String title, String description, String narrative) {
             this.number = number;
             this.title = title;
             this.description = description;
             this.narrative = narrative;
         }
-
-    }
-    
-
-    private static String extractTagContent(String source, String startTag, String endTag) {
-        String content = "";
-        int startIndex = source.indexOf(startTag);
-        if (startIndex != -1) {
-            startIndex += startTag.length();
-            int endIndex = source.indexOf(endTag, startIndex);
-            if (endIndex != -1) {
-                content = source.substring(startIndex, endIndex).trim();
-            }
-        }
-        
-        if (startTag.equals("<num>")) {
-            content = content.replace("Number:", "").trim();
-        } else if (startTag.equals("<desc>")) {
-            content = content.replace("Description:", "").trim();
-        }
-
-        return content.replace('\n', ' ').replace('\r', ' ').replaceAll("\\s+", " ");
     }
 
-    public List<Topic> parse(Path topicsFilePath) throws IOException {
-        List<Topic> topicList = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
+    public List<Topic> parse(Path topicsPath) throws IOException {
+        List<Topic> topics = new ArrayList<>();
+        String content = new String(Files.readAllBytes(topicsPath));
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(topicsFilePath.toFile()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
+        String[] topicBlocks = content.split("(?m)^<top>$");
+
+        for (String block : topicBlocks) {
+            if (block.trim().isEmpty()) {
+                continue;
+            }
+
+            String num = extractTagContent(block, "<num> Number: ", true);
+            String title = extractTagContent(block, "<title> ", false);
+            String desc = extractTagContent(block, "<desc> Description:", false);
+            String narr = extractTagContent(block, "<narr> Narrative:", false);
+            
+            if (num != null && !num.isEmpty()) {
+                num = num.replaceAll("[^0-9]", "");
+            }
+            
+            if (num != null && !num.isEmpty() && title != null && !title.isEmpty()) {
+                topics.add(new Topic(num, title, desc, narr));
             }
         }
-        String fileContent = sb.toString();
-        String[] topics = fileContent.split("(?s)(?=<top>)");
-        
-        for (int i = 1; i < topics.length; i++) {
-            String topicText = topics[i];
-
-            String num = extractTagContent(topicText, "<num>", "</num>");
-            String title = extractTagContent(topicText, "<title>", "</title>");
-            String desc = extractTagContent(topicText, "<desc>", "</desc>");
-            String narr = extractTagContent(topicText, "<narr>", "</narr>");
-
-            if (!num.isEmpty()) {
-                topicList.add(new Topic(num, title, desc, narr));
-            }
-        }
-
-        return topicList;
+        return topics;
     }
 
+    private String extractTagContent(String block, String tag, boolean isNum) {
+        int startIndex = block.indexOf(tag);
+        if (startIndex == -1) {
+            return "";
+        }
+        startIndex += tag.length();
+
+        int endIndex;
+        if (isNum) {
+            endIndex = block.indexOf('\n', startIndex);
+        } else {
+            endIndex = block.indexOf("\n<", startIndex);
+        }
+
+        if (endIndex == -1) {
+            endIndex = block.indexOf("</top>", startIndex);
+            if (endIndex == -1) {
+                endIndex = block.length();
+            }
+        }
+
+        return block.substring(startIndex, endIndex).trim()
+                .replace("\n", " ")
+                .replaceAll("\\s+", " ");
+    }
 }

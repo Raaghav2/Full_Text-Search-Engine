@@ -2,8 +2,8 @@ package org.cs7is3;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import java.io.IOException;
 
 // TODO: Implement your main application class
 // This class should handle command-line arguments and coordinate between Indexer and Searcher
@@ -20,7 +20,7 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer;
 
 public class App {
 
-   private static String getArgValue(String[] args, String flag) {
+    private static String getArgValue(String[] args, String flag) {
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equalsIgnoreCase(flag)) {
                 return args[i + 1];
@@ -28,6 +28,7 @@ public class App {
         }
         return null;
     }
+
     public static void main(String[] args) {
         if (args.length == 0) {
             System.err.println("Usage: java -jar your-jar.jar <command> [options]");
@@ -55,8 +56,10 @@ public class App {
                 System.out.println("--- Starting Indexing Process ---");
                 System.out.println("Document Collection: " + docsPath.toAbsolutePath());
                 System.out.println("Index Directory: " + indexPath.toAbsolutePath());
+                
                 Indexer indexer = new Indexer(new EnglishAnalyzer());
                 indexer.buildIndex(docsPath, indexPath);
+                System.out.println("--- Indexing Complete ---");
 
             } else if ("search".equals(command)) {
                 // Command: java -jar your-jar.jar search --index index --topics topics --output runs/student.run --numDocs 1000
@@ -76,16 +79,15 @@ public class App {
                 Path outputPath = Paths.get(outputPathStr);
                 int numDocs = Integer.parseInt(numDocsStr);
 
-                // Placeholder for Searcher logic (to be implemented later)
                 System.out.println("--- Starting Search Process ---");
                 System.out.println("Index Path: " + indexPath.toAbsolutePath());
                 System.out.println("Topics File: " + topicsPath.toAbsolutePath());
                 System.out.println("Output File: " + outputPath.toAbsolutePath());
                 System.out.println("Retrieving Top K: " + numDocs);
                 
-                // TODO: Instantiate and call your Searcher class here:
-                // Searcher searcher = new Searcher(...);
-                // searcher.runQueries(indexPath, topicsPath, outputPath, numDocs);
+
+                Searcher searcher = new Searcher();
+                searcher.searchTopics(indexPath, topicsPath, outputPath, numDocs);
                 
             } else {
                 System.err.println("Unknown command: " + args[0]);
@@ -93,7 +95,7 @@ public class App {
             }
         } catch (NumberFormatException e) {
             System.err.println("Error: --numDocs must be an integer.");
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             System.err.println("An IO Error occurred: " + e.getMessage());
             e.printStackTrace();
         } catch (Exception e) {

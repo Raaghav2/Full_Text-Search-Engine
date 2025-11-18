@@ -1,6 +1,7 @@
 org/cs7is3/Directory.class
 org/cs7is3/Indexer.class
 org/cs7is3/Parsers/FR94Parser.class
+org/cs7is3/Searcher$1.class
 org/cs7is3/TopicParser$Topic.class
 org/cs7is3/Parsers/LATimesParser.class
 org/cs7is3/TopicParser.class
