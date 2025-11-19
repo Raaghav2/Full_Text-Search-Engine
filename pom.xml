@@ -1,20 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>org.cs7is3</groupId>
-  <artifactId>cs7is3-search</artifactId>
-  <version>1.0.0</version>
-  <name>CS7IS3 Search Engine</name>
-  <description>Search engine implementation for CS7IS3 Assignment 2</description>
 
-  <properties>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"> <modelVersion>4.0.0</modelVersion>
+
+```
+<groupId>org.cs7is3</groupId>
+<artifactId>cs7is3-search</artifactId>
+<version>1.0.0</version>
+<name>CS7IS3 Search Engine</name>
+<description>Search engine implementation for CS7IS3 Assignment 2</description>
+
+<properties>
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <lucene.version>9.9.2</lucene.version>
-  </properties>
+</properties>
 
-  <dependencies>
+<dependencies>
+    <!-- Lucene Core -->
     <dependency>
         <groupId>org.apache.lucene</groupId>
         <artifactId>lucene-core</artifactId>
@@ -31,6 +36,13 @@
         <version>${lucene.version}</version>
     </dependency>
     <dependency>
+        <groupId>org.apache.lucene</groupId>
+        <artifactId>lucene-queries</artifactId>
+        <version>${lucene.version}</version>
+    </dependency>
+
+    <!-- XML/Binding -->
+    <dependency>
         <groupId>javax.xml.bind</groupId>
         <artifactId>jaxb-api</artifactId>
         <version>2.3.1</version>
@@ -40,57 +52,63 @@
         <artifactId>jaxb-runtime</artifactId>
         <version>2.3.1</version>
     </dependency>
-  </dependencies>
 
+    <!-- HTML parsing -->
+    <dependency>
+        <groupId>org.jsoup</groupId>
+        <artifactId>jsoup</artifactId>
+        <version>1.15.3</version>
+    </dependency>
 
-  <build>
+    <!-- Activation (for JAXB support in Java 17+) -->
+    <dependency>
+        <groupId>javax.activation</groupId>
+        <artifactId>activation</artifactId>
+        <version>1.1</version>
+    </dependency>
+</dependencies>
+
+<build>
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.11.0</version>
-        <configuration>
-          <release>17</release>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.5.0</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
+        <!-- Compiler plugin -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.11.0</version>
             <configuration>
-              <createDependencyReducedPom>false</createDependencyReducedPom>
-              <!-- Don't minimize the jar: minimization may drop classes that are loaded reflectively -->
-              <minimizeJar>false</minimizeJar>
-              <!-- Ensure Lucene artifacts are explicitly included in the shaded jar -->
-              <artifactSet>
-                <includes>
-                  <include>org.apache.lucene:lucene-core</include>
-                  <include>org.apache.lucene:lucene-analysis-common</include>
-                  <include>org.apache.lucene:lucene-queryparser</include>
-                </includes>
-              </artifactSet>
-              <!-- Merge service provider files so Lucene's service-based providers are preserved -->
-              <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>org.cs7is3.App</mainClass>
-                  <!-- Preserve multi-release attribute so META-INF/versions classes are used -->
-                  <manifestEntries>
-                    <Multi-Release>true</Multi-Release>
-                  </manifestEntries>
-                </transformer>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-              </transformers>
-              <!-- No filters: include project classes and dependencies intact (preserve MR entries via manifestEntries) -->
+                <release>17</release>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
+        </plugin>
+
+        <!-- Shade plugin for building a runnable jar -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions>
+                <execution>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>shade</goal>
+                    </goals>
+                    <configuration>
+                        <createDependencyReducedPom>false</createDependencyReducedPom>
+                        <minimizeJar>false</minimizeJar>
+                        <transformers>
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                <mainClass>org.cs7is3.Searcher</mainClass>
+                                <manifestEntries>
+                                    <Multi-Release>true</Multi-Release>
+                                </manifestEntries>
+                            </transformer>
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                        </transformers>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
     </plugins>
-  </build>
+</build>
+```
+
 </project>
