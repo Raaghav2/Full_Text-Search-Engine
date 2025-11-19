@@ -73,7 +73,7 @@ jobs:
           
           echo "✅ Search completed successfully"
 
-      - name: Generate Evaluation Data
+            - name: Generate Evaluation Data
         run: |
           cd assignment-two-group-12
           echo "📊 Generating evaluation data..."
