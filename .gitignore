@@ -24,3 +24,11 @@ out/
 # Logs
 *.log
 Assignment Two/
+
+#data
+rawdata/dtds
+rawdata/ft
+rawdata/latimes
+rawdata/fbis
+rawdata/fr94
+rawdata/ReadMe.txt
