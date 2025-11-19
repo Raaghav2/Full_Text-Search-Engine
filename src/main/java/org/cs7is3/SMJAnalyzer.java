@@ -9,8 +9,8 @@ import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.en.KStemFilter;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.miscellaneous.ASCIIFoldingFilter;
-import org.apache.lucene.analysis.standard.StandardFilter;
-import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.ClassicFilter;
+import org.apache.lucene.analysis.standard.ClassicTokenizer;
 
 import java.util.Arrays;
 import java.util.List;
@@ -18,15 +18,12 @@ import java.util.List;
 public class SMJAnalyzer extends Analyzer {
 
     @Override
-    protected TokenStreamComponents createComponents(String fieldName) {
+    protected TokenStreamComponents createComponents(String s) {
+        Tokenizer tokenizer = new ClassicTokenizer();
 
-        // Replaced ClassicTokenizer → StandardTokenizer
-        Tokenizer tokenizer = new StandardTokenizer();
+        TokenStream tokenStream = new ClassicFilter(tokenizer);
 
-        // Replaced ClassicFilter → StandardFilter
-        TokenStream tokenStream = new StandardFilter(tokenizer);
-
-        // Normalize accents
+        // ASCIIFolding for accents
         tokenStream = new ASCIIFoldingFilter(tokenStream);
 
         // Hardcoded stopwords
@@ -50,13 +47,13 @@ public class SMJAnalyzer extends Analyzer {
 
         CharArraySet stopWords = new CharArraySet(stopWordList, true);
 
-        // Lowercasing
+        // Apply lowercase
         tokenStream = new LowerCaseFilter(tokenStream);
 
-        // Stopword removal
+        // Apply stopwords
         tokenStream = new StopFilter(tokenStream, stopWords);
 
-        // Stemming
+        // Apply stemming
         tokenStream = new KStemFilter(tokenStream);
         tokenStream = new PorterStemFilter(tokenStream);
 
