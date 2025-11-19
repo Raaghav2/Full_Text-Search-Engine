@@ -2,10 +2,9 @@ package org.cs7is3;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List; // Changed to List interface
+import java.util.List; 
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -19,7 +18,8 @@ import org.cs7is3.Parsers.LATimesParser;
 
 public class Indexer {
 
-    public Analyzer analyzer = new EnglishAnalyzer();
+    // Use our new CustomAnalyzer
+    public Analyzer analyzer = new CustomAnalyzer();
 
     public Indexer(Analyzer analyzer) {
         this.analyzer = analyzer;
@@ -28,29 +28,25 @@ public class Indexer {
     public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {
         Directory directory = FSDirectory.open(Paths.get(indexPath.toString()));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        config.setOpenMode(OpenMode.CREATE);
         
-        // Tuning for performance (optional but helps)
+        // Create new index (overwrite old one)
+        config.setOpenMode(OpenMode.CREATE);
+        // Optimize RAM usage
         config.setRAMBufferSizeMB(256.0); 
         
         IndexWriter writer = new IndexWriter(directory, config);
 
-        System.out.println("Starting incremental parsing...");
+        System.out.println("Starting incremental parsing with CustomAnalyzer...");
         long totalDocs = 0;
         
         // --- FBIS ---
         Path fbisPath = docsPath.resolve("fbis");
         System.out.println("Processing FBIS documents...");
         List<Document> fbisDocs = FBISParser.parseFBIS(fbisPath.toString());
-        // Write immediately
         writer.addDocuments(fbisDocs);
         totalDocs += fbisDocs.size();
         System.out.printf("-> Indexed %d FBIS docs.%n", fbisDocs.size());
-        
-        // CLEAR MEMORY
-        fbisDocs.clear(); 
-        fbisDocs = null; // Help Garbage Collector
-        System.gc();     // Suggest Garbage Collection
+        fbisDocs.clear(); fbisDocs = null; System.gc(); // Clear Memory
 
         // --- FR94 ---
         Path fr94Path = docsPath.resolve("fr94");
@@ -59,11 +55,7 @@ public class Indexer {
         writer.addDocuments(fr94Docs);
         totalDocs += fr94Docs.size();
         System.out.printf("-> Indexed %d FR94 docs.%n", fr94Docs.size());
-        
-        // CLEAR MEMORY
-        fr94Docs.clear();
-        fr94Docs = null;
-        System.gc();
+        fr94Docs.clear(); fr94Docs = null; System.gc(); // Clear Memory
 
         // --- FT ---
         Path ftPath = docsPath.resolve("ft");
@@ -72,11 +64,7 @@ public class Indexer {
         writer.addDocuments(ftDocs);
         totalDocs += ftDocs.size();
         System.out.printf("-> Indexed %d FT docs.%n", ftDocs.size());
-        
-        // CLEAR MEMORY
-        ftDocs.clear();
-        ftDocs = null;
-        System.gc();
+        ftDocs.clear(); ftDocs = null; System.gc(); // Clear Memory
 
         // --- LA Times ---
         Path latimesPath = docsPath.resolve("latimes");
@@ -85,15 +73,10 @@ public class Indexer {
         writer.addDocuments(latimesDocs);
         totalDocs += latimesDocs.size();
         System.out.printf("-> Indexed %d LA Times docs.%n", latimesDocs.size());
-        
-        // CLEAR MEMORY
-        latimesDocs.clear();
-        latimesDocs = null;
-        System.gc();
+        latimesDocs.clear(); latimesDocs = null; System.gc(); // Clear Memory
 
         System.out.printf("%nTotal documents indexed: %d%n", totalDocs);
         
-        // Force merge to optimize the index (optional, makes searching faster)
         System.out.println("Merging segments...");
         writer.forceMerge(1); 
         
