@@ -35,7 +35,7 @@ import java.util.List;
 public class Searcher {
 
     private static final boolean USE_LM_DIRICHLET = true;
-    private static final String RUN_TAG = "qiming-run";
+    private static final String RUN_TAG = "qiming-lmd";
 
     public void searchTopics(Path indexPath, Path topicsPath,
                              Path outputRun, int numDocs) throws IOException {
