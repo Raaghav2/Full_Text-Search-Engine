@@ -157,8 +157,7 @@ public class Searcher {
         for (String sentence : sentences) {
             String lower = sentence.toLowerCase();
             if (lower.contains("not relevant") || 
-                lower.contains("irrelevant") ||
-                lower.contains("unless")) {
+                lower.contains("irrelevant")) {
                 continue; 
             }
             cleanText.append(sentence).append(" ");
