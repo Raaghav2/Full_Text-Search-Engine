@@ -34,7 +34,7 @@ import java.util.List;
 
 public class Searcher {
 
-    private static final boolean USE_LM_DIRICHLET = false;
+    private static final boolean USE_LM_DIRICHLET = ture;
     private static final String RUN_TAG = "qiming-run";
 
     public void searchTopics(Path indexPath, Path topicsPath,
