@@ -59,20 +59,16 @@ public class Searcher {
             }
         };
         searcher.setSimilarity(mixedSimilarity); 
-
-        // ===========================================================================
-        // 2. QUERY PARSER SETUP (Fix Applied Here)
-        // ===========================================================================
         
         // Title Parser
         QueryParser titleParser = new QueryParser("TITLE", analyzer);
-        titleParser.setSplitOnWhitespace(true); // <-- REQUIRED FIX for Lucene 9.x
+        titleParser.setSplitOnWhitespace(true); 
         titleParser.setAutoGeneratePhraseQueries(true); 
         titleParser.setPhraseSlop(2); 
 
         // Text Parser
         QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true); // <-- REQUIRED FIX for Lucene 9.x
+        textParser.setSplitOnWhitespace(true); 
         textParser.setAutoGeneratePhraseQueries(true); 
         textParser.setPhraseSlop(8); 
 
