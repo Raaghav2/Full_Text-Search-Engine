@@ -2,8 +2,7 @@ package org.cs7is3;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-
+import java.util.List; // Changed to List interface
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
@@ -18,79 +17,88 @@ import org.cs7is3.Parsers.FR94Parser;
 import org.cs7is3.Parsers.FTParser;
 import org.cs7is3.Parsers.LATimesParser;
 
-// TODO: Implement your Lucene indexer
-// This class should build a Lucene index from the document collection
-//
-// Requirements:
-// 1. Parse documents from the "Assignment Two" dataset
-// 2. Extract relevant fields (DOCNO, TITLE, TEXT, etc.)
-// 3. Create a Lucene index with appropriate analyzers
-// 4. Handle document parsing errors gracefully
-//
-// The GitHub Actions workflow will call:
-//   indexer.buildIndex(Path docsPath, Path indexPath)
-
 public class Indexer {
 
-    //default analyzer in case none is provided
     public Analyzer analyzer = new EnglishAnalyzer();
 
-    //constructor to set analyzer
     public Indexer(Analyzer analyzer) {
         this.analyzer = analyzer;
     }
 
-    public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {;
-        //create index writer
+    public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {
         Directory directory = FSDirectory.open(Paths.get(indexPath.toString()));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        OpenMode mode = OpenMode.CREATE;
-        config.setOpenMode(mode);
+        config.setOpenMode(OpenMode.CREATE);
+        
+        // Tuning for performance (optional but helps)
+        config.setRAMBufferSizeMB(256.0); 
+        
         IndexWriter writer = new IndexWriter(directory, config);
 
-        ArrayList<Document> documentsToIndex = new ArrayList<>();
-        
-        System.out.println("Starting direct multi-corpus parsing...");
+        System.out.println("Starting incremental parsing...");
         long totalDocs = 0;
         
+        // --- FBIS ---
         Path fbisPath = docsPath.resolve("fbis");
-        System.out.println("Processing FBIS documents at: " + fbisPath);
-        new FBISParser();
-        ArrayList<Document> fbisDocs = FBISParser.parseFBIS(fbisPath.toString()); 
-        documentsToIndex.addAll(fbisDocs);
+        System.out.println("Processing FBIS documents...");
+        List<Document> fbisDocs = FBISParser.parseFBIS(fbisPath.toString());
+        // Write immediately
+        writer.addDocuments(fbisDocs);
         totalDocs += fbisDocs.size();
-        System.out.printf("-> %d FBIS documents parsed.%n", fbisDocs.size());
+        System.out.printf("-> Indexed %d FBIS docs.%n", fbisDocs.size());
+        
+        // CLEAR MEMORY
+        fbisDocs.clear(); 
+        fbisDocs = null; // Help Garbage Collector
+        System.gc();     // Suggest Garbage Collection
 
+        // --- FR94 ---
         Path fr94Path = docsPath.resolve("fr94");
-        System.out.println("Processing FR94 documents at: " + fr94Path);
-        new FR94Parser();
-        ArrayList<Document> fr94Docs = FR94Parser.parseFR94(fr94Path.toString()); 
-        documentsToIndex.addAll(fr94Docs);
+        System.out.println("Processing FR94 documents...");
+        List<Document> fr94Docs = FR94Parser.parseFR94(fr94Path.toString());
+        writer.addDocuments(fr94Docs);
         totalDocs += fr94Docs.size();
-        System.out.printf("-> %d FR94 documents parsed.%n", fr94Docs.size());
+        System.out.printf("-> Indexed %d FR94 docs.%n", fr94Docs.size());
+        
+        // CLEAR MEMORY
+        fr94Docs.clear();
+        fr94Docs = null;
+        System.gc();
 
+        // --- FT ---
         Path ftPath = docsPath.resolve("ft");
-        System.out.println("Processing FT documents at: " + ftPath);
-        new FTParser();
-        ArrayList<Document> ftDocs = FTParser.parseFT(ftPath.toString()); 
-        documentsToIndex.addAll(ftDocs);
+        System.out.println("Processing FT documents...");
+        List<Document> ftDocs = FTParser.parseFT(ftPath.toString());
+        writer.addDocuments(ftDocs);
         totalDocs += ftDocs.size();
-        System.out.printf("-> %d FT documents parsed.%n", ftDocs.size());
+        System.out.printf("-> Indexed %d FT docs.%n", ftDocs.size());
+        
+        // CLEAR MEMORY
+        ftDocs.clear();
+        ftDocs = null;
+        System.gc();
 
+        // --- LA Times ---
         Path latimesPath = docsPath.resolve("latimes");
-        System.out.println("Processing LA Times documents at: " + latimesPath);
-        new LATimesParser();
-        ArrayList<Document> latimesDocs = LATimesParser.parseLATimes(latimesPath.toString()); 
-        documentsToIndex.addAll(latimesDocs);
+        System.out.println("Processing LA Times documents...");
+        List<Document> latimesDocs = LATimesParser.parseLATimes(latimesPath.toString());
+        writer.addDocuments(latimesDocs);
         totalDocs += latimesDocs.size();
-        System.out.printf("-> %d LA Times documents parsed.%n", latimesDocs.size());
+        System.out.printf("-> Indexed %d LA Times docs.%n", latimesDocs.size());
+        
+        // CLEAR MEMORY
+        latimesDocs.clear();
+        latimesDocs = null;
+        System.gc();
 
-        System.out.printf("%nTotal documents to index: %d%n", totalDocs);
-        writer.addDocuments(documentsToIndex);
-
+        System.out.printf("%nTotal documents indexed: %d%n", totalDocs);
+        
+        // Force merge to optimize the index (optional, makes searching faster)
+        System.out.println("Merging segments...");
+        writer.forceMerge(1); 
+        
         writer.close();
         directory.close();
         System.out.println("Indexing complete. Index created at: " + indexPath);
-
     }
 }
