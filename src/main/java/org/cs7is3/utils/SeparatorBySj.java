@@ -1,4 +1,4 @@
-package com.lucene.indexandsearch.utils;
+package org.cs7is3.utils;
 
 import java.io.BufferedReader;
 import java.io.FileReader;

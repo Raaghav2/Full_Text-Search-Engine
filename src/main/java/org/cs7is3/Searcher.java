@@ -1,11 +1,8 @@
 package org.cs7is3;
 
-package com.lucene.indexandsearch.searcher;
-
-
-import com.lucene.indexandsearch.query.QueryData;
-import com.lucene.indexandsearch.query.QueryReader;
-import com.lucene.indexandsearch.utils.Constants;
+import org.cs7is3.query.QueryData;
+import org.cs7is3.query.QueryReader;
+import org.cs7is3.utils.Constants;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -24,7 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.lucene.indexandsearch.searcher.Searcher.SimModel.BM25;
+import static org.cs7is3.Searcher.SimModel.BM25;
 
 
 public class Searcher {

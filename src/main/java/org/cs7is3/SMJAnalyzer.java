@@ -1,4 +1,4 @@
-package org.cs7is3.indexer;
+package org.cs7is3;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.core.*;

@@ -1,4 +1,4 @@
-package com.lucene.indexandsearch.utils;
+package org.cs7is3.utils;
 
 import org.apache.lucene.analysis.Analyzer;
 
