@@ -47,9 +47,7 @@ public class Searcher {
         // 1. MIXED SIMILARITY SETUP
         // ===========================================================================
         final Map<String, Similarity> fieldSims = new HashMap<>();
-        // IB Model for TITLE: High precision for short text
         fieldSims.put("TITLE", new IBSimilarity(new DistributionSPL(), new LambdaDF(), new NormalizationH2()));
-        // BM25 Model for TEXT: Robust for body text
         fieldSims.put("TEXT", new BM25Similarity());
         
         final Similarity defaultSim = new BM25Similarity();
@@ -63,16 +61,18 @@ public class Searcher {
         searcher.setSimilarity(mixedSimilarity); 
 
         // ===========================================================================
-        // 2. QUERY PARSER SETUP (Phrase Matching)
+        // 2. QUERY PARSER SETUP (Fix Applied Here)
         // ===========================================================================
         
-        // Title Parser: Strict proximity (slop 2)
+        // Title Parser
         QueryParser titleParser = new QueryParser("TITLE", analyzer);
+        titleParser.setSplitOnWhitespace(true); // <-- REQUIRED FIX for Lucene 9.x
         titleParser.setAutoGeneratePhraseQueries(true); 
         titleParser.setPhraseSlop(2); 
 
-        // Text Parser: Loose proximity (slop 8)
+        // Text Parser
         QueryParser textParser = new QueryParser("TEXT", analyzer);
+        textParser.setSplitOnWhitespace(true); // <-- REQUIRED FIX for Lucene 9.x
         textParser.setAutoGeneratePhraseQueries(true); 
         textParser.setPhraseSlop(8); 
 
@@ -81,6 +81,11 @@ public class Searcher {
         
         int totalResultsWritten = 0; 
         
+        // --- Ensure output directory exists ---
+        if (outputRun.getParent() != null) {
+            outputRun.getParent().toFile().mkdirs();
+        }
+
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
                 
@@ -90,19 +95,19 @@ public class Searcher {
                 BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
                 
                 try {
-                    // --- Title: Boost 3.5 (High Priority) ---
+                    // --- Title: Boost 3.5 ---
                     if (topic.title != null && !topic.title.isEmpty()) {
                         Query titleQuery = titleParser.parse(QueryParser.escape(topic.title));
                         queryBuilder.add(new BoostQuery(titleQuery, 3.5f), BooleanClause.Occur.SHOULD);
                     }
 
-                    // --- Description: Boost 1.7 (Medium Priority) ---
+                    // --- Description: Boost 1.7 ---
                     if (topic.description != null && !topic.description.isEmpty()) {
                         Query descQuery = textParser.parse(QueryParser.escape(topic.description));
                         queryBuilder.add(new BoostQuery(descQuery, 1.7f), BooleanClause.Occur.SHOULD);
                     }
 
-                    // --- Narrative: Boost 1.0 (Filtered) ---
+                    // --- Narrative: Filtered, Boost 1.0 ---
                     if (topic.narrative != null && !topic.narrative.isEmpty()) {
                         String cleanNarrative = filterNegativeNarrative(topic.narrative);
                         
@@ -149,12 +154,8 @@ public class Searcher {
         }
     }
 
-    /**
-     * Filters out sentences containing negative phrases like "not relevant".
-     */
     private String filterNegativeNarrative(String narrative) {
         StringBuilder cleanText = new StringBuilder();
-        // Split by period, semicolon, or newline to find sentence boundaries
         String[] sentences = narrative.split("[\\.\\;\\n]");
         
         for (String sentence : sentences) {
