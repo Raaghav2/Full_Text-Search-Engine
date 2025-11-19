@@ -41,7 +41,7 @@
         <version>${lucene.version}</version>
     </dependency>
 
-    <!-- XML/Binding -->
+    <!-- JAXB for XML Binding -->
     <dependency>
         <groupId>javax.xml.bind</groupId>
         <artifactId>jaxb-api</artifactId>
