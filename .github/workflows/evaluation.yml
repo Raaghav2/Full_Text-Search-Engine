@@ -22,6 +22,8 @@ jobs:
 
       - name: Build and Test Search Engine
         run: |
+          cd assignment-two-group-12
+
           echo "=== CS7IS3 Assignment 2 - Search Engine Test ==="
           
           # Check project structure
@@ -54,6 +56,9 @@ jobs:
           echo "🔨 Building project..."
           mvn clean package -q
           echo "✅ Build completed successfully"
+
+          echo "📁 Contents of target/:"
+          ls -l target
           
           # Create directories
           mkdir -p index runs out
@@ -70,9 +75,9 @@ jobs:
 
       - name: Generate Evaluation Data
         run: |
+          cd assignment-two-group-12
           echo "📊 Generating evaluation data..."
           
-          # Create realistic qrels based on student's search results
           python3 << 'EOF'
 import argparse
 import random
@@ -80,7 +85,6 @@ import re
 from pathlib import Path
 
 def parse_run_file(run_path):
-    """Parse a TREC run file to extract retrieved documents per topic"""
     topic_docs = {}
     with open(run_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -96,48 +100,37 @@ def parse_run_file(run_path):
     return topic_docs
 
 def create_realistic_qrels(topic_docs, out_qrels, relevance_rate=0.25):
-    """Create realistic qrels by selecting some retrieved documents as relevant"""
-    random.seed(42)  # Fixed seed for reproducibility
-    
+    random.seed(42)
     with open(out_qrels, "w", encoding="utf-8") as f:
         for qid, docs in topic_docs.items():
-            # Select a subset of retrieved documents as relevant
             num_docs = len(docs)
-            num_relevant = max(1, int(num_docs * relevance_rate))  # At least 1 relevant doc
-            
-            # Bias toward higher-ranked documents
+            num_relevant = max(1, int(num_docs * relevance_rate))
             relevant_docs = []
             for i, doc in enumerate(docs):
-                # Higher-ranked docs have higher probability of being relevant
-                prob = relevance_rate * (1.0 - (i / num_docs) * 0.5)  # Decrease probability with rank
+                prob = relevance_rate * (1.0 - (i / num_docs) * 0.5)
                 if random.random() < prob and len(relevant_docs) < num_relevant:
                     relevant_docs.append(doc)
-            
-            # Ensure we have at least some relevant documents
             if not relevant_docs:
-                relevant_docs = docs[:min(3, len(docs))]  # Take top 3 if none selected
-            
+                relevant_docs = docs[:min(3, len(docs))]
             for docno in relevant_docs:
                 f.write(f"{qid} 0 {docno} 1\n")
 
-# Parse the run file to get retrieved documents
 topic_docs = parse_run_file("runs/student.run")
 print(f"Found {len(topic_docs)} topics in run file")
-
-# Create realistic qrels based on retrieved documents
 create_realistic_qrels(topic_docs, "out/qrels.demo.txt", 0.25)
 print(f"Created realistic qrels with relevance rate 0.25")
-print(f"Qrels written to: out/qrels.demo.txt")
 EOF
 
       - name: Evaluate Results
         run: |
+          cd assignment-two-group-12
           echo "📈 Evaluating results..."
-          python3 tools/evaluate.py out/qrels.demo.txt runs/student.run --out_csv out/standings.csv --out_md out/standings.md
+          python3 ../tools/evaluate.py out/qrels.demo.txt runs/student.run --out_csv out/standings.csv --out_md out/standings.md
           echo "✅ Evaluation completed"
 
       - name: Display Results
         run: |
+          cd assignment-two-group-12
           echo "=== SEARCH ENGINE EVALUATION RESULTS ==="
           if [ -f "out/standings.md" ]; then
             echo "📊 Performance Metrics:"
@@ -152,7 +145,9 @@ EOF
           fi
 
       - name: Publish Summary
+        id: summary
         run: |
+          cd assignment-two-group-12
           echo "## 🔍 CS7IS3 Assignment 2 - Search Engine Evaluation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Performance Metrics" >> $GITHUB_STEP_SUMMARY
@@ -172,16 +167,13 @@ EOF
             echo "map=$MAP" >> $GITHUB_OUTPUT
             echo "p20=$P20" >> $GITHUB_OUTPUT
             echo "ndcg20=$nDCG" >> $GITHUB_OUTPUT
-          fi
-        id: summary
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: search-engine-evaluation-results
           path: |
-            out/standings.csv
-            out/standings.md
-            runs/student.run
-            out/qrels.demo.txt
-
+            assignment-two-group-12/out/standings.csv
+            assignment-two-group-12/out/standings.md
+            assignment-two-group-12/runs/student.run
+            assignment-two-group-12/out/qrels.demo.txt
