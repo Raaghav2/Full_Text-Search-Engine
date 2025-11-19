@@ -1,12 +1,16 @@
 package org.cs7is3;
 
-import org.apache.lucene.analysis.*;
-import org.apache.lucene.analysis.core.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.CharArraySet;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.en.KStemFilter;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.miscellaneous.ASCIIFoldingFilter;
-import org.apache.lucene.analysis.standard.StandardFilter;
-import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.ClassicFilter;
+import org.apache.lucene.analysis.standard.ClassicTokenizer;
 
 import java.util.Arrays;
 import java.util.List;
@@ -15,11 +19,9 @@ public class SMJAnalyzer extends Analyzer {
 
     @Override
     protected TokenStreamComponents createComponents(String s) {
-        // Use StandardTokenizer instead of ClassicTokenizer
-        Tokenizer stdTokenizer = new StandardTokenizer();
+        Tokenizer tokenizer = new ClassicTokenizer();
 
-        // Use StandardFilter instead of ClassicFilter
-        TokenStream tokenStream = new StandardFilter(stdTokenizer);
+        TokenStream tokenStream = new ClassicFilter(tokenizer);
 
         // ASCIIFolding for accents
         tokenStream = new ASCIIFoldingFilter(tokenStream);
@@ -43,18 +45,18 @@ public class SMJAnalyzer extends Analyzer {
                 "with", "would", "you", "your", "yours", "yourself", "yourselves"
         );
 
-        CharArraySet stopWordSet = new CharArraySet(stopWordList, true);
+        CharArraySet stopWords = new CharArraySet(stopWordList, true);
 
         // Apply lowercase
         tokenStream = new LowerCaseFilter(tokenStream);
 
         // Apply stopwords
-        tokenStream = new StopFilter(tokenStream, stopWordSet);
+        tokenStream = new StopFilter(tokenStream, stopWords);
 
         // Apply stemming
         tokenStream = new KStemFilter(tokenStream);
         tokenStream = new PorterStemFilter(tokenStream);
 
-        return new TokenStreamComponents(stdTokenizer, tokenStream);
+        return new TokenStreamComponents(tokenizer, tokenStream);
     }
 }

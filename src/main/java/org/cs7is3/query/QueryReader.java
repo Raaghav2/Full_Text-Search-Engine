@@ -1,6 +1,6 @@
-package com.lucene.indexandsearch.query;
+package org.cs7is3.query;
 
-import com.lucene.indexandsearch.utils.Constants;
+import org.cs7is3.utils.Constants;
 
 import java.io.BufferedReader;
 import java.io.FileReader;

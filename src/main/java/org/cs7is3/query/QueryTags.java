@@ -1,4 +1,4 @@
-package com.lucene.indexandsearch.query;
+package org.cs7is3.query;
 
 public enum QueryTags {
 
