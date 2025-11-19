@@ -32,7 +32,7 @@ import java.util.List;
 public class Indexer {
 
     public void buildIndex(Path docsPath, Path indexPath) throws IOException {
-        Analyzer analyzer = new StandardAnalyzer(); // 可以改成 EnglishAnalyzer
+        Analyzer analyzer = new EnglishAnalyzer(); 
 
         Directory dir = FSDirectory.open(indexPath);
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
@@ -59,7 +59,7 @@ public class Indexer {
 
     private List<Document> parseDocumentsFromFile(Path file) throws IOException {
         List<Document> docs = new ArrayList<>();
-        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<String> lines = Files.readAllLines(file, StandardCharsets.ISO_8859_1);
 
         StringBuilder current = new StringBuilder();
         boolean inDoc = false;
