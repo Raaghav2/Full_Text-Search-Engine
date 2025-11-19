@@ -2,8 +2,8 @@ package org.cs7is3.utils;
 
 import org.apache.lucene.analysis.Analyzer;
 
-import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
+import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlRootElement;
 
 /**
