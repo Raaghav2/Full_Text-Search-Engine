@@ -26,3 +26,9 @@ Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming 
   - schedule a push to main
   - confirm next steps
 roles: research and discussion on best approaches moving forward
+
+
+Meeting 19.11.25
+Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
+  - choose which version to merge into main for the testing
+  - waiting with the next steps for the real QREL file
