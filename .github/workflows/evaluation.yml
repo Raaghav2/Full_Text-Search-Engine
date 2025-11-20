@@ -48,6 +48,8 @@ jobs:
 
       - name: Build and Test Search Engine
         run: |
+          cd assignment-two-group-12
+
           echo "=== CS7IS3 Assignment 2 - Search Engine Test ==="
           
           # Check project structure
@@ -80,6 +82,9 @@ jobs:
           echo "🔨 Building project..."
           mvn clean package -q
           echo "✅ Build completed successfully"
+
+          echo "📁 Contents of target/:"
+          ls -l target
           
           # Create directories
           mkdir -p index runs out
@@ -94,11 +99,11 @@ jobs:
           
           echo "✅ Search completed successfully"
 
-      - name: Generate Evaluation Data
+            - name: Generate Evaluation Data
         run: |
+          cd assignment-two-group-12
           echo "📊 Generating evaluation data..."
           
-          # Create realistic qrels based on student's search results
           python3 << 'EOF'
           import argparse
           import random
@@ -158,12 +163,14 @@ jobs:
           echo "✅ Evaluation data generated"
       - name: Evaluate Results
         run: |
+          cd assignment-two-group-12
           echo "📈 Evaluating results..."
-          python3 tools/evaluate.py out/qrels.demo.txt runs/student.run --out_csv out/standings.csv --out_md out/standings.md
+          python3 ../tools/evaluate.py out/qrels.demo.txt runs/student.run --out_csv out/standings.csv --out_md out/standings.md
           echo "✅ Evaluation completed"
 
       - name: Display Results
         run: |
+          cd assignment-two-group-12
           echo "=== SEARCH ENGINE EVALUATION RESULTS ==="
           if [ -f "out/standings.md" ]; then
             echo "📊 Performance Metrics:"
@@ -178,7 +185,9 @@ jobs:
           fi
 
       - name: Publish Summary
+        id: summary
         run: |
+          cd assignment-two-group-12
           echo "## 🔍 CS7IS3 Assignment 2 - Search Engine Evaluation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Performance Metrics" >> $GITHUB_STEP_SUMMARY
@@ -198,8 +207,6 @@ jobs:
             echo "map=$MAP" >> $GITHUB_OUTPUT
             echo "p20=$P20" >> $GITHUB_OUTPUT
             echo "ndcg20=$nDCG" >> $GITHUB_OUTPUT
-          fi
-        id: summary
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
