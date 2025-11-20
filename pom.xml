@@ -54,11 +54,28 @@
             </goals>
             <configuration>
               <createDependencyReducedPom>false</createDependencyReducedPom>
+              <!-- Don't minimize the jar: minimization may drop classes that are loaded reflectively -->
+              <minimizeJar>false</minimizeJar>
+              <!-- Ensure Lucene artifacts are explicitly included in the shaded jar -->
+              <artifactSet>
+                <includes>
+                  <include>org.apache.lucene:lucene-core</include>
+                  <include>org.apache.lucene:lucene-analysis-common</include>
+                  <include>org.apache.lucene:lucene-queryparser</include>
+                </includes>
+              </artifactSet>
+              <!-- Merge service provider files so Lucene's service-based providers are preserved -->
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>org.cs7is3.App</mainClass>
+                  <!-- Preserve multi-release attribute so META-INF/versions classes are used -->
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                  </manifestEntries>
                 </transformer>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
               </transformers>
+              <!-- No filters: include project classes and dependencies intact (preserve MR entries via manifestEntries) -->
             </configuration>
           </execution>
         </executions>
