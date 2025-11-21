@@ -18,25 +18,26 @@ import org.cs7is3.Parsers.LATimesParser;
 
 public class Indexer {
 
-    // Use our new CustomAnalyzer
-    public Analyzer analyzer = new CustomAnalyzer();
+    // Force the use of CustomAnalyzer
+    public Analyzer analyzer;
 
-    public Indexer(Analyzer analyzer) {
-        this.analyzer = analyzer;
+    public Indexer(Analyzer ignoredAnalyzer) {
+
+        this.analyzer = new CustomAnalyzer();
     }
 
     public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {
         Directory directory = FSDirectory.open(Paths.get(indexPath.toString()));
+        
+
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         
-        // Create new index (overwrite old one)
         config.setOpenMode(OpenMode.CREATE);
-        // Optimize RAM usage
         config.setRAMBufferSizeMB(256.0); 
         
         IndexWriter writer = new IndexWriter(directory, config);
 
-        System.out.println("Starting incremental parsing with CustomAnalyzer...");
+        System.out.println("Starting incremental parsing with CustomAnalyzer (KStem)...");
         long totalDocs = 0;
         
         // --- FBIS ---
@@ -46,7 +47,7 @@ public class Indexer {
         writer.addDocuments(fbisDocs);
         totalDocs += fbisDocs.size();
         System.out.printf("-> Indexed %d FBIS docs.%n", fbisDocs.size());
-        fbisDocs.clear(); fbisDocs = null; System.gc(); // Clear Memory
+        fbisDocs.clear(); fbisDocs = null; System.gc(); 
 
         // --- FR94 ---
         Path fr94Path = docsPath.resolve("fr94");
@@ -55,7 +56,7 @@ public class Indexer {
         writer.addDocuments(fr94Docs);
         totalDocs += fr94Docs.size();
         System.out.printf("-> Indexed %d FR94 docs.%n", fr94Docs.size());
-        fr94Docs.clear(); fr94Docs = null; System.gc(); // Clear Memory
+        fr94Docs.clear(); fr94Docs = null; System.gc(); 
 
         // --- FT ---
         Path ftPath = docsPath.resolve("ft");
@@ -64,7 +65,7 @@ public class Indexer {
         writer.addDocuments(ftDocs);
         totalDocs += ftDocs.size();
         System.out.printf("-> Indexed %d FT docs.%n", ftDocs.size());
-        ftDocs.clear(); ftDocs = null; System.gc(); // Clear Memory
+        ftDocs.clear(); ftDocs = null; System.gc(); 
 
         // --- LA Times ---
         Path latimesPath = docsPath.resolve("latimes");
@@ -73,7 +74,7 @@ public class Indexer {
         writer.addDocuments(latimesDocs);
         totalDocs += latimesDocs.size();
         System.out.printf("-> Indexed %d LA Times docs.%n", latimesDocs.size());
-        latimesDocs.clear(); latimesDocs = null; System.gc(); // Clear Memory
+        latimesDocs.clear(); latimesDocs = null; System.gc(); 
 
         System.out.printf("%nTotal documents indexed: %d%n", totalDocs);
         
