@@ -94,13 +94,13 @@ public class Searcher {
                     // --- Title: Boost 3.5 ---
                     if (topic.title != null && !topic.title.isEmpty()) {
                         Query titleQuery = titleParser.parse(QueryParser.escape(topic.title));
-                        queryBuilder.add(new BoostQuery(titleQuery, 3.5f), BooleanClause.Occur.SHOULD);
+                        queryBuilder.add(new BoostQuery(titleQuery, 2.5f), BooleanClause.Occur.SHOULD);
                     }
 
                     // --- Description: Boost 1.7 ---
                     if (topic.description != null && !topic.description.isEmpty()) {
                         Query descQuery = textParser.parse(QueryParser.escape(topic.description));
-                        queryBuilder.add(new BoostQuery(descQuery, 1.7f), BooleanClause.Occur.SHOULD);
+                        queryBuilder.add(new BoostQuery(descQuery, 1.2f), BooleanClause.Occur.SHOULD);
                     }
 
                     // --- Narrative: Filtered, Boost 1.0 ---
