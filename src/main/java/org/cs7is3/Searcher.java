@@ -64,7 +64,7 @@ public class Searcher {
         QueryParser titleParser = new QueryParser("TITLE", analyzer);
         titleParser.setSplitOnWhitespace(true); 
         titleParser.setAutoGeneratePhraseQueries(true); 
-        titleParser.setPhraseSlop(2); 
+        titleParser.setPhraseSlop(5); 
 
         // Text Parser
         QueryParser textParser = new QueryParser("TEXT", analyzer);
