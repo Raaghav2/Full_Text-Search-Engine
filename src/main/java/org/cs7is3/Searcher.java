@@ -17,11 +17,12 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
 
 public class Searcher {
 
     // MUST match the Analyzer used in Indexer.java
-    private final Analyzer analyzer = new CustomAnalyzer(); 
+    private final Analyzer analyzer = new EnglishAnalyzer(); 
     
     private static final String RUN_TAG = "CS7IS3_Bare_BM25";
     

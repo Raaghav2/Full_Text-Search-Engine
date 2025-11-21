@@ -15,6 +15,7 @@ import org.cs7is3.Parsers.FBISParser;
 import org.cs7is3.Parsers.FR94Parser;
 import org.cs7is3.Parsers.FTParser;
 import org.cs7is3.Parsers.LATimesParser;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
 
 public class Indexer {
 
@@ -23,7 +24,7 @@ public class Indexer {
 
     public Indexer(Analyzer ignoredAnalyzer) {
 
-        this.analyzer = new CustomAnalyzer();
+        this.analyzer = new EnglishAnalyzer();
     }
 
     public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {
