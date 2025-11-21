@@ -25,7 +25,7 @@ public class Searcher {
     
     private static final String RUN_TAG = "CS7IS3_Bare_BM25";
     
-    // We search both fields, but treat them equally
+
     private static final String[] SEARCH_FIELDS = {"TITLE", "TEXT"};
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
@@ -33,16 +33,9 @@ public class Searcher {
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
         IndexSearcher searcher = new IndexSearcher(reader);
 
-        // ===========================================================================
-        // 1. SIMILARITY SETUP: Pure BM25
-        // ===========================================================================
-        // No fancy wrappers. Just the industry standard probabilistic model.
+
         searcher.setSimilarity(new BM25Similarity());
 
-        // ===========================================================================
-        // 2. PARSER SETUP: Standard Multi-Field
-        // ===========================================================================
-        // No phrase slop, no strictness. Just finds words in either field.
         MultiFieldQueryParser queryParser = new MultiFieldQueryParser(SEARCH_FIELDS, analyzer);
 
         TopicParser topicParser = new TopicParser();
@@ -65,9 +58,6 @@ public class Searcher {
                     
                     Query query = queryParser.parse(QueryParser.escape(queryString));
                     
-                    // ===================================================================
-                    // 4. EXECUTE SEARCH
-                    // ===================================================================
                     ScoreDoc[] hits = searcher.search(query, numDocs).scoreDocs;
 
                     for (int rank = 0; rank < hits.length; rank++) {
