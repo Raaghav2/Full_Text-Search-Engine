@@ -1,117 +1,128 @@
 package org.cs7is3;
 
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.nio.file.Path;
-import java.util.List;
-
+import java.util.*;
+import java.util.stream.Collectors;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.similarities.LMDirichletSimilarity;
+import org.apache.lucene.search.*;
+import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
 
 public class Searcher {
-
-    private final Analyzer analyzer = new CustomAnalyzer(); 
-    private static final String RUN_TAG = "CS7IS3_Simple_KStem_Dirichlet";
+    private final Analyzer analyzer = new EnglishAnalyzer();
+    private static final String RUN_TAG = "CS7IS3_Entity_RM3_Compact";
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
-        
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
         IndexSearcher searcher = new IndexSearcher(reader);
+        searcher.setSimilarity(new BM25Similarity(1.2f, 0.75f));
 
-        // ENGINE: LM Dirichlet (Mu=2000)
-        // Standard setting. Smooths probabilities based on document length.
-        searcher.setSimilarity(new LMDirichletSimilarity(2000));
+        QueryParser parser = new QueryParser("TEXT", analyzer);
+        parser.setSplitOnWhitespace(true);
 
-        // Parser targeting the TEXT field
-        // Dirichlet works best on the main body of text.
-        QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true);
-
-        TopicParser topicParser = new TopicParser();
-        List<Topic> topics = topicParser.parse(topicsPath);
-        
+        List<Topic> topics = new TopicParser().parse(topicsPath);
         if (outputRun.getParent() != null) outputRun.getParent().toFile().mkdirs();
+        int totalDocs = reader.maxDoc();
 
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
-                
-                BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
-                
                 try {
-                    // =========================================================
-                    // STRATEGY: Flat Probabilistic Query
-                    // =========================================================
-                    // We combine all parts into a single "Topic Model".
-                    // We trust KStem to match the concepts.
-                    // We trust Dirichlet to handle the weighting.
-
-                    // 1. Title
-                    if (topic.title != null) {
-                        Query q = textParser.parse(QueryParser.escape(topic.title));
-                        queryBuilder.add(q, BooleanClause.Occur.SHOULD);
-                    }
-
-                    // 2. Description
-                    if (topic.description != null) {
-                        Query q = textParser.parse(QueryParser.escape(topic.description));
-                        queryBuilder.add(q, BooleanClause.Occur.SHOULD);
-                    }
-
-                    // 3. Narrative (Filtered)
-                    // We filter "not relevant" to avoid polluting the probability model.
+                    BooleanQuery.Builder anchor = new BooleanQuery.Builder();
+                    if (topic.title != null) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(topic.title)), 3.0f), BooleanClause.Occur.SHOULD);
+                    if (topic.description != null) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(topic.description)), 1.3f), BooleanClause.Occur.SHOULD);
                     if (topic.narrative != null) {
-                        String cleanNarr = filterNegativeNarrative(topic.narrative);
-                        if (!cleanNarr.trim().isEmpty()) {
-                            Query q = textParser.parse(QueryParser.escape(cleanNarr));
-                            queryBuilder.add(q, BooleanClause.Occur.SHOULD);
+                        String n = filterNarrative(topic.narrative);
+                        if (!n.isEmpty()) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(n)), 0.5f), BooleanClause.Occur.SHOULD);
+                    }
+
+                    TopDocs pilot = searcher.search(anchor.build(), 20);// see the top 20 docs for query expansion
+                    Map<String, Double> weights = new HashMap<>();
+                    Set<String> original = getQueryTerms(topic);
+
+                    for (ScoreDoc hit : pilot.scoreDocs) {
+                        String text = searcher.doc(hit.doc).get("TEXT");
+                        if (text == null) continue;
+                        
+                        Map<String, Boolean> terms = analyze(text);
+                        for (Map.Entry<String, Boolean> e : terms.entrySet()) {
+                            String t = e.getKey();
+                            if (original.contains(t)) continue;
+
+                            int df = reader.docFreq(new Term("TEXT", t));
+                            if (df < 2 || df > (totalDocs * 0.15)) continue;//remove if they occur to frquently
+
+                            double w = (Math.log((double)totalDocs / (df + 1)) + 1.0) * hit.score;
+                            if (e.getValue()) w *= 1.25;//look if they are an entity
+                            weights.put(t, weights.getOrDefault(t, 0.0) + w);
                         }
                     }
-                    
-                    // EXECUTE
-                    ScoreDoc[] hits = searcher.search(queryBuilder.build(), numDocs).scoreDocs;
 
-                    for (int rank = 0; rank < hits.length; rank++) {
-                        ScoreDoc hit = hits[rank];
-                        Document doc = searcher.doc(hit.doc);
-                        String docNo = doc.get("DOCNO");
-                        if (docNo == null) continue; 
-                        
-                        writer.println(String.format("%s Q0 %s %d %.4f %s", 
-                            topic.number, docNo, rank + 1, hit.score, RUN_TAG));
+                    List<String> exp = weights.entrySet().stream()
+                        .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                        .limit(40).map(Map.Entry::getKey).collect(Collectors.toList());// add the top 40 to your list
+
+                    BooleanQuery.Builder finalQ = new BooleanQuery.Builder();
+                    finalQ.add(anchor.build(), BooleanClause.Occur.SHOULD);
+                    if (!exp.isEmpty()) {
+                        finalQ.add(new BoostQuery(parser.parse(QueryParser.escape(String.join(" ", exp))), 0.5f), BooleanClause.Occur.SHOULD);
                     }
-                    writer.flush(); 
 
-                } catch (Exception e) {
-                    System.err.println("Error on topic " + topic.number);
-                }
+                    ScoreDoc[] hits = searcher.search(finalQ.build(), numDocs).scoreDocs;
+                    for (int i = 0; i < hits.length; i++) {
+                        writer.printf("%s Q0 %s %d %.4f %s%n", topic.number, searcher.doc(hits[i].doc).get("DOCNO"), i + 1, hits[i].score, RUN_TAG);
+                    }
+                    writer.flush();
+                } catch (Exception e) { System.err.println("Error: " + topic.number); }
             }
-            System.out.println("Simple Dirichlet Search Complete.");
-            
-        } finally {
-            reader.close(); 
-        }
+            System.out.println("Search Complete.");
+        } finally { reader.close(); }
     }
 
-    private String filterNegativeNarrative(String narrative) {
-        StringBuilder sb = new StringBuilder();
-        for (String s : narrative.split("[\\.\\;\\n]")) {
-            String lower = s.toLowerCase();
-            if (!lower.contains("not relevant") && 
-                !lower.contains("irrelevant") && 
-                !lower.contains("unless")) {
-                sb.append(s).append(" ");
+    private Map<String, Boolean> analyze(String text) throws IOException {
+        Map<String, Boolean> map = new HashMap<>();
+        Set<String> caps = new HashSet<>();
+        String[] raw = text.split("\\s+"); //split the words
+        int max = Math.min(raw.length, 200); //check only the top200
+        for (int i = 0; i < max; i++) {
+            if (raw[i].length() > 0 && Character.isUpperCase(raw[i].charAt(0)))// if the word is uppercase, it is an entity
+                caps.add(raw[i].replaceAll("[^a-zA-Z]", "").toLowerCase());// store the lowercase version in the set
+        }
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(text))) {
+            CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            int c = 0;
+            while (ts.incrementToken() && c++ < 200) {
+                String s = term.toString();
+                if (s.length() > 3 && !s.matches(".*\\d.*")) map.put(s, caps.contains(s));//add the term to the map:True/False
             }
+            ts.end();
+        }
+        return map;
+    }
+
+    private Set<String> getQueryTerms(Topic t) throws IOException {
+        Set<String> s = new HashSet<>();
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader((t.title != null ? t.title : "") + " " + (t.description != null ? t.description : "")))) {
+            CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            while (ts.incrementToken()) s.add(term.toString());
+            ts.end();
+        }
+        return s;
+    }
+
+    private String filterNarrative(String n) {
+        StringBuilder sb = new StringBuilder();
+        for (String s : n.split("[\\s\\.\\;\\n]+")) {
+            String l = s.toLowerCase().replaceAll("[^a-z]", "");
+            if (!l.contains("not") && !l.contains("irrelevant") && !l.isEmpty()) sb.append(s).append(" ");//remove narrative which isnt relevant    
         }
         return sb.toString();
     }
