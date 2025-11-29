@@ -12,18 +12,20 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 
-// Imports for Advanced Querying
+// Advanced Querying
 import org.apache.lucene.queryparser.classic.QueryParser; 
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
 
-// Imports for Mixed Similarity
+// Mixed Similarity
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.search.similarities.IBSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
@@ -34,18 +36,31 @@ import org.apache.lucene.search.similarities.NormalizationH2;
 
 public class Searcher {
 
-    // Use our new CustomAnalyzer
+    // 自定义分析器（KStem + 停用词等）
     private final Analyzer analyzer = new CustomAnalyzer(); 
-    private static final String RUN_TAG = "CS7IS3_Ultimate_Boosted_Phrase_KStem";
+
+    // leaderboard 上显示的 run 名
+    private static final String RUN_TAG = "CS7IS3_Ultimate_Boosted_Phrase_KStem_PRF";
+
+    // 每个 topic 最终返回的文档数
+    private static final int DEFAULT_NUM_DOCS = 1000;
+
+    // PRF 参数：用前 fbDocs 篇文档做伪相关反馈，扩展查询权重 prfBoost
+    private static final int FB_DOCS = 5;       // 你可以试 5 或 10
+    private static final float PRF_BOOST = 0.6f; // 扩展查询的权重（0.4 ~ 0.8 之间可调）
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         
+        if (numDocs <= 0) {
+            numDocs = DEFAULT_NUM_DOCS;
+        }
+
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
         IndexSearcher searcher = new IndexSearcher(reader);
 
-        // ===========================================================================
-        // 1. MIXED SIMILARITY SETUP
-        // ===========================================================================
+        // ======================================================================
+        // 1. Mixed Similarity（保留你原来的设置）
+        // ======================================================================
         final Map<String, Similarity> fieldSims = new HashMap<>();
         fieldSims.put("TITLE", new IBSimilarity(new DistributionSPL(), new LambdaDF(), new NormalizationH2()));
         fieldSims.put("TEXT", new BM25Similarity());
@@ -60,19 +75,20 @@ public class Searcher {
         };
         searcher.setSimilarity(mixedSimilarity); 
         
+        // ======================================================================
+        // 2. QueryParser 设置
+        // ======================================================================
+        // Title Parser
+        QueryParser titleParser = new QueryParser("TITLE", analyzer);
+        titleParser.setSplitOnWhitespace(true); 
+        titleParser.setAutoGeneratePhraseQueries(true); 
+        titleParser.setPhraseSlop(2); 
 
-QueryParser titleParser = new QueryParser("TITLE", analyzer);
-titleParser.setAutoGeneratePhraseQueries(true);
-titleParser.setPhraseSlop(2);
-
-// titleParser.setSplitOnWhitespace(true);
-
-
-QueryParser textParser = new QueryParser("TEXT", analyzer);
-
-textParser.setAutoGeneratePhraseQueries(false);
-
-// textParser.setSplitOnWhitespace(true); 
+        // Text Parser
+        QueryParser textParser = new QueryParser("TEXT", analyzer);
+        textParser.setSplitOnWhitespace(true); 
+        textParser.setAutoGeneratePhraseQueries(true); 
+        textParser.setPhraseSlop(8); 
 
         TopicParser topicParser = new TopicParser();
         List<Topic> topics = topicParser.parse(topicsPath);
@@ -87,9 +103,9 @@ textParser.setAutoGeneratePhraseQueries(false);
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
                 
-                // ===========================================================================
-                // 3. BOOSTED QUERY CONSTRUCTION
-                // ===========================================================================
+                // ==================================================================
+                // 3. 构造原始查询（Original Query）
+                // ==================================================================
                 BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
                 
                 try {
@@ -115,11 +131,35 @@ textParser.setAutoGeneratePhraseQueries(false);
                         }
                     }
                     
-                    BooleanQuery finalQuery = queryBuilder.build();
-                    
-                    // ===========================================================================
-                    // 4. EXECUTE SEARCH
-                    // ===========================================================================
+                    BooleanQuery originalQuery = queryBuilder.build();
+
+                    // 如果原始查询没有任何子句，直接跳过这个 topic
+                    if (originalQuery.clauses().isEmpty()) {
+                        System.err.println("Empty query for topic " + topic.number + ", skipping.");
+                        continue;
+                    }
+
+                    // ==================================================================
+                    // 4. PRF：基于原始查询做一次初检 + 构造扩展查询
+                    // ==================================================================
+                    Query finalQuery = originalQuery;
+                    try {
+                        finalQuery = buildPrfQuery(
+                                searcher,
+                                originalQuery,
+                                textParser,
+                                FB_DOCS,
+                                PRF_BOOST
+                        );
+                    } catch (ParseException e) {
+                        System.err.println("PRF parse error for topic " + topic.number + ": " + e.getMessage());
+                        // 出问题就退回原始查询
+                        finalQuery = originalQuery;
+                    }
+
+                    // ==================================================================
+                    // 5. 执行最终检索（用扩展后的查询）
+                    // ==================================================================
                     ScoreDoc[] hits = searcher.search(finalQuery, numDocs).scoreDocs;
 
                     for (int rank = 0; rank < hits.length; rank++) {
@@ -140,7 +180,7 @@ textParser.setAutoGeneratePhraseQueries(false);
                     }
                     writer.flush(); 
 
-                } catch (org.apache.lucene.queryparser.classic.ParseException e) {
+                } catch (ParseException e) {
                     System.err.println("Error parsing query for topic " + topic.number + ": " + e.getMessage());
                 }
             }
@@ -152,27 +192,90 @@ textParser.setAutoGeneratePhraseQueries(false);
         }
     }
 
-    private String filterNegativeNarrative(String narrative) {
-    String[] sentences = narrative.split("[\\.\\;\\n]");
-    StringBuilder cleanText = new StringBuilder();
-    int added = 0;
+    /**
+     * PRF：使用伪相关反馈扩展查询
+     * - 用 originalQuery 先搜 top fbDocs 文档
+     * - 把这些文档的 TEXT 字段拼接起来
+     * - 截断到最多 maxTokens 个词
+     * - 用 textParser 解析成反馈查询，并以 prfBoost 加到原查询上
+     */
+    private Query buildPrfQuery(IndexSearcher searcher,
+                                Query originalQuery,
+                                QueryParser textParser,
+                                int fbDocs,
+                                float prfBoost) throws IOException, ParseException {
 
-    for (String sentence : sentences) {
-        String trimmed = sentence.trim();
-        if (trimmed.isEmpty()) continue;
+        // 1) 初次检索，取反馈文档
+        TopDocs fbTopDocs = searcher.search(originalQuery, fbDocs);
+        ScoreDoc[] fbHits = fbTopDocs.scoreDocs;
 
-        String lower = trimmed.toLowerCase();
-        if (lower.contains("not relevant") || lower.contains("irrelevant")) {
-            // 负例句直接跳过
-            continue;
+        if (fbHits.length == 0) {
+            // 没有结果，直接用原始查询
+            return originalQuery;
         }
 
-        cleanText.append(trimmed).append(" ");
-        added++;
+        StringBuilder fbTextBuilder = new StringBuilder();
+        int usedDocs = 0;
 
-        // 最多保留前两句
-        if (added >= 2) break;
+        for (ScoreDoc sd : fbHits) {
+            Document d = searcher.doc(sd.doc);
+            String text = d.get("TEXT"); // 字段名要和索引时一致
+            if (text != null && !text.isEmpty()) {
+                fbTextBuilder.append(text).append(' ');
+                usedDocs++;
+            }
+            if (usedDocs >= fbDocs) {
+                break;
+            }
+        }
+
+        String fbRaw = fbTextBuilder.toString().trim();
+        if (fbRaw.isEmpty()) {
+            // 没有可用反馈文本，返回原始查询
+            return originalQuery;
+        }
+
+        // 2) 简单截断，避免 query 过长（比如最多 300 个 token）
+        String[] tokens = fbRaw.split("\\s+");
+        int maxTokens = Math.min(tokens.length, 300);
+        StringBuilder truncated = new StringBuilder();
+        for (int i = 0; i < maxTokens; i++) {
+            truncated.append(tokens[i]).append(' ');
+        }
+
+        String fbText = truncated.toString().trim();
+        if (fbText.isEmpty()) {
+            return originalQuery;
+        }
+
+        // 3) 解析反馈文本为查询
+        Query fbQuery = textParser.parse(QueryParser.escape(fbText));
+
+        // 4) 合并原始查询和反馈查询
+        BooleanQuery.Builder prfBuilder = new BooleanQuery.Builder();
+        prfBuilder.add(originalQuery, BooleanClause.Occur.SHOULD); // 原始查询
+        prfBuilder.add(new BoostQuery(fbQuery, prfBoost), BooleanClause.Occur.SHOULD); // 扩展部分
+
+        return prfBuilder.build();
     }
-    return cleanText.toString().trim();
+
+    /**
+     * 过滤 narrative 中包含 "not relevant" / "irrelevant" 的负例句子。
+     * （目前是不过滤长度，如果想进一步优化，可以只保留前 1-2 句）
+     */
+    private String filterNegativeNarrative(String narrative) {
+        StringBuilder cleanText = new StringBuilder();
+        String[] sentences = narrative.split("[\\.\\;\\n]");
+        
+        for (String sentence : sentences) {
+            String lower = sentence.toLowerCase();
+            if (lower.contains("not relevant") || 
+                lower.contains("irrelevant")) {
+                continue; 
+            }
+            cleanText.append(sentence).append(" ");
+        }
+        return cleanText.toString().trim();
+    }
 }
-}
+
