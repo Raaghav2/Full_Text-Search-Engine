@@ -264,18 +264,25 @@ public class Searcher {
      * （目前是不过滤长度，如果想进一步优化，可以只保留前 1-2 句）
      */
     private String filterNegativeNarrative(String narrative) {
-        StringBuilder cleanText = new StringBuilder();
-        String[] sentences = narrative.split("[\\.\\;\\n]");
-        
-        for (String sentence : sentences) {
-            String lower = sentence.toLowerCase();
-            if (lower.contains("not relevant") || 
-                lower.contains("irrelevant")) {
-                continue; 
-            }
-            cleanText.append(sentence).append(" ");
+    String[] sentences = narrative.split("[\\.\\;\\n]");
+    StringBuilder cleanText = new StringBuilder();
+    int added = 0;
+
+    for (String raw : sentences) {
+        String sentence = raw.trim();
+        if (sentence.isEmpty()) continue;
+
+        String lower = sentence.toLowerCase();
+        if (lower.contains("not relevant") || lower.contains("irrelevant")) {
+            continue;
         }
-        return cleanText.toString().trim();
+
+        cleanText.append(sentence).append(" ");
+        added++;
+
+        if (added >= 2) break; // 只保留前 2 句
     }
+    return cleanText.toString().trim();
+}
 }
 
