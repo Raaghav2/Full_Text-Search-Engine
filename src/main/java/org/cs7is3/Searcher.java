@@ -11,7 +11,7 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Map.Entry;
 import java.util.Collections;
-
+import org.apache.lucene.index.Term;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
@@ -209,7 +209,15 @@ public class Searcher {
      * - 截断到最多 maxTokens 个词
      * - 用 textParser 解析成反馈查询，并以 prfBoost 加到原查询上
      */
-    private Query buildPrfQuery(IndexSearcher searcher,
+    /**
+ * PRF：使用伪相关反馈扩展查询（tf-idf 选词版本）
+ * - 用 originalQuery 先搜 top fbDocs 文档
+ * - 对这些文档的 TEXT 做分词，统计 term 的 tf
+ * - 使用全局 df 计算一个简单 tf-idf 分数
+ * - 选出分数最高的前 MAX_FEEDBACK_TERMS 个词拼成反馈查询
+ * - 以 prfBoost 的权重加到原始查询上
+ */
+private Query buildPrfQuery(IndexSearcher searcher,
                             Query originalQuery,
                             QueryParser textParser,
                             int fbDocs,
@@ -224,7 +232,7 @@ public class Searcher {
         return originalQuery;
     }
 
-    // 全局 term 频率统计
+    // 全局 term 频率统计（在反馈文档中）
     Map<String, Integer> termFreq = new HashMap<>();
 
     for (int i = 0; i < Math.min(fbDocs, fbHits.length); i++) {
@@ -240,7 +248,7 @@ public class Searcher {
             ts.reset();
             while (ts.incrementToken()) {
                 String term = termAttr.toString();
-                // 略微过滤一下太短的 token
+                // 过滤太短的 token
                 if (term.length() < 2) {
                     continue;
                 }
@@ -254,15 +262,48 @@ public class Searcher {
         return originalQuery;
     }
 
-    // 2) 按频率从高到低排序
-    List<Entry<String, Integer>> entries = new ArrayList<>(termFreq.entrySet());
-    Collections.sort(entries, (a, b) -> Integer.compare(b.getValue(), a.getValue()));
+    // 2) 计算每个 term 的 tf-idf 分数
+    IndexReader reader = searcher.getIndexReader();
+    int N = reader.maxDoc();
 
-    // 3) 取前 MAX_FEEDBACK_TERMS 个 term 拼成反馈文本
-    int limit = Math.min(MAX_FEEDBACK_TERMS, entries.size());
+    // 临时结构：term -> score
+    List<Map.Entry<String, Double>> scoredTerms = new ArrayList<>();
+
+    for (Map.Entry<String, Integer> e : termFreq.entrySet()) {
+        String term = e.getKey();
+        int tf = e.getValue();
+
+        // 全局 df：这个 term 在多少篇文档里出现过
+        int df = reader.docFreq(new Term("TEXT", term));
+        if (df == 0) continue;
+
+        // 略微过滤一下太常见的词（例如出现在 30% 以上的文档里）
+        if (df > 0.3 * N) {
+            continue;
+        }
+
+        // 简单 tf-idf：tf * log((N+1)/(df+0.5))
+        double idf = Math.log((N + 1.0) / (df + 0.5));
+        double score = tf * idf;
+
+        // 过滤掉很弱的词
+        if (score <= 0) continue;
+
+        scoredTerms.add(Map.entry(term, score));
+    }
+
+    if (scoredTerms.isEmpty()) {
+        return originalQuery;
+    }
+
+    // 3) 按 tf-idf 分数从高到低排序
+    Collections.sort(scoredTerms, (a, b) -> Double.compare(b.getValue(), a.getValue()));
+
+    // 4) 取前 MAX_FEEDBACK_TERMS 个 term 拼成反馈文本
+    int limit = Math.min(MAX_FEEDBACK_TERMS, scoredTerms.size());
     StringBuilder fbTextBuilder = new StringBuilder();
     for (int i = 0; i < limit; i++) {
-        String term = entries.get(i).getKey();
+        String term = scoredTerms.get(i).getKey();
         fbTextBuilder.append(term).append(' ');
     }
 
@@ -271,12 +312,12 @@ public class Searcher {
         return originalQuery;
     }
 
-    // 4) 解析反馈文本为查询
+    // 5) 解析反馈文本为查询（不用 escape，因为 term 已经是 analyzer 输出的 token）
     Query fbQuery = textParser.parse(fbText);
 
-    // 5) 合并原始查询和反馈查询
+    // 6) 合并原始查询和反馈查询
     BooleanQuery.Builder prfBuilder = new BooleanQuery.Builder();
-    prfBuilder.add(originalQuery, BooleanClause.Occur.SHOULD);                // 原始查询
+    prfBuilder.add(originalQuery, BooleanClause.Occur.SHOULD);                    // 原始查询
     prfBuilder.add(new BoostQuery(fbQuery, prfBoost), BooleanClause.Occur.SHOULD); // 扩展部分
 
     return prfBuilder.build();
