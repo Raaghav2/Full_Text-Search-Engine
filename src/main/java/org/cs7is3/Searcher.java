@@ -86,8 +86,8 @@ public class Searcher {
 
         // Text Parser
         QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true); 
-        textParser.setAutoGeneratePhraseQueries(true); 
+        //textParser.setSplitOnWhitespace(true); 
+        textParser.setAutoGeneratePhraseQueries(false); 
         textParser.setPhraseSlop(8); 
 
         TopicParser topicParser = new TopicParser();
