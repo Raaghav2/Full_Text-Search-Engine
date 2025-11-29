@@ -60,17 +60,19 @@ public class Searcher {
         };
         searcher.setSimilarity(mixedSimilarity); 
         
-        // Title Parser
-        QueryParser titleParser = new QueryParser("TITLE", analyzer);
-        titleParser.setSplitOnWhitespace(true); 
-        titleParser.setAutoGeneratePhraseQueries(true); 
-        titleParser.setPhraseSlop(2); 
 
-        // Text Parser
-        QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true); 
-        textParser.setAutoGeneratePhraseQueries(true); 
-        textParser.setPhraseSlop(8); 
+QueryParser titleParser = new QueryParser("TITLE", analyzer);
+titleParser.setAutoGeneratePhraseQueries(true);
+titleParser.setPhraseSlop(2);
+
+// titleParser.setSplitOnWhitespace(true);
+
+
+QueryParser textParser = new QueryParser("TEXT", analyzer);
+
+textParser.setAutoGeneratePhraseQueries(false);
+
+// textParser.setSplitOnWhitespace(true); 
 
         TopicParser topicParser = new TopicParser();
         List<Topic> topics = topicParser.parse(topicsPath);
