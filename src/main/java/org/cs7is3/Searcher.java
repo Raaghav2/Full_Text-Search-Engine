@@ -1,167 +1,204 @@
 package org.cs7is3;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.nio.file.Path;
-import java.util.HashMap; 
-import java.util.List;
-import java.util.Map;     
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
-
-// Imports for Advanced Querying
-import org.apache.lucene.queryparser.classic.QueryParser; 
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
 
-// Imports for Mixed Similarity
-import org.apache.lucene.search.similarities.BM25Similarity;
-import org.apache.lucene.search.similarities.IBSimilarity;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
-import org.apache.lucene.search.similarities.DistributionSPL; 
-import org.apache.lucene.search.similarities.LambdaDF;        
-import org.apache.lucene.search.similarities.NormalizationH2; 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 public class Searcher {
 
-    // Use our new CustomAnalyzer
-    private final Analyzer analyzer = new CustomAnalyzer(); 
-    private static final String RUN_TAG = "CS7IS3_Ultimate_Boosted_Phrase_KStem";
+    // 使用自定义分析器（KStem + 停用词等）
+    private final Analyzer analyzer = new CustomAnalyzer();
 
+    // TREC run 的标签（在 leaderboard 上显示）
+    private static final String RUN_TAG = "CS7IS3_Ultimate_Boosted_KStem";
+    private static final int DEFAULT_NUM_DOCS = 1000;
+
+    /**
+     * 运行检索，生成 TREC 格式的 run 文件
+     *
+     * @param indexPath 索引目录
+     * @param topicsPath topics 文件路径
+     * @param outputRun 输出 run 文件路径
+     * @param numDocs 每个 topic 检索的文档数（<=0 时使用默认 1000）
+     */
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
-        
-        IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
-        IndexSearcher searcher = new IndexSearcher(reader);
 
-        // ===========================================================================
-        // 1. MIXED SIMILARITY SETUP
-        // ===========================================================================
-        final Map<String, Similarity> fieldSims = new HashMap<>();
-        fieldSims.put("TITLE", new IBSimilarity(new DistributionSPL(), new LambdaDF(), new NormalizationH2()));
-        fieldSims.put("TEXT", new BM25Similarity());
-        
-        final Similarity defaultSim = new BM25Similarity();
-        
-        Similarity mixedSimilarity = new PerFieldSimilarityWrapper() {
-            @Override
-            public Similarity get(String fieldName) {
-                return fieldSims.getOrDefault(fieldName, defaultSim);
-            }
-        };
-        searcher.setSimilarity(mixedSimilarity); 
-        
-        // Title Parser
-        QueryParser titleParser = new QueryParser("TITLE", analyzer);
-        titleParser.setSplitOnWhitespace(true); 
-        titleParser.setAutoGeneratePhraseQueries(true); 
-        titleParser.setPhraseSlop(2); 
-
-        // Text Parser
-        QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true); 
-        textParser.setAutoGeneratePhraseQueries(true); 
-        textParser.setPhraseSlop(8); 
-
-        TopicParser topicParser = new TopicParser();
-        List<Topic> topics = topicParser.parse(topicsPath);
-        
-        int totalResultsWritten = 0; 
-        
-        // --- Ensure output directory exists ---
-        if (outputRun.getParent() != null) {
-            outputRun.getParent().toFile().mkdirs();
+        if (numDocs <= 0) {
+            numDocs = DEFAULT_NUM_DOCS;
         }
 
-        try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
-            for (Topic topic : topics) {
-                
-                // ===========================================================================
-                // 3. BOOSTED QUERY CONSTRUCTION
-                // ===========================================================================
-                BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
-                
-                try {
-                    // --- Title: Boost 3.5 ---
-                    if (topic.title != null && !topic.title.isEmpty()) {
-                        Query titleQuery = titleParser.parse(QueryParser.escape(topic.title));
-                        queryBuilder.add(new BoostQuery(titleQuery, 3.5f), BooleanClause.Occur.SHOULD);
-                    }
+        // 打开索引
+        try (IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath))) {
+            IndexSearcher searcher = new IndexSearcher(reader);
 
-                    // --- Description: Boost 1.7 ---
-                    if (topic.description != null && !topic.description.isEmpty()) {
-                        Query descQuery = textParser.parse(QueryParser.escape(topic.description));
-                        queryBuilder.add(new BoostQuery(descQuery, 1.7f), BooleanClause.Occur.SHOULD);
-                    }
+            // 统一使用经过调参的 BM25，相对稳定
+            // 可以根据需要多试一些参数组合，例如 (1.2f, 0.75f), (1.5f, 0.75f), (1.5f, 0.9f)
+            searcher.setSimilarity(new BM25Similarity(1.5f, 0.75f));
 
-                    // --- Narrative: Filtered, Boost 1.0 ---
-                    if (topic.narrative != null && !topic.narrative.isEmpty()) {
-                        String cleanNarrative = filterNegativeNarrative(topic.narrative);
-                        
-                        if (!cleanNarrative.trim().isEmpty()) {
-                            Query narrQuery = textParser.parse(QueryParser.escape(cleanNarrative));
-                            queryBuilder.add(narrQuery, BooleanClause.Occur.SHOULD);
-                        }
-                    }
-                    
-                    BooleanQuery finalQuery = queryBuilder.build();
-                    
-                    // ===========================================================================
-                    // 4. EXECUTE SEARCH
-                    // ===========================================================================
-                    ScoreDoc[] hits = searcher.search(finalQuery, numDocs).scoreDocs;
+            // TITLE 字段：启用短语查询 + 小 slop，利用短语信息
+            QueryParser titleParser = new QueryParser("TITLE", analyzer);
+            titleParser.setAutoGeneratePhraseQueries(true);
+            titleParser.setPhraseSlop(2);
 
-                    for (int rank = 0; rank < hits.length; rank++) {
-                        ScoreDoc hit = hits[rank];
-                        Document doc = searcher.doc(hit.doc);
-                        
-                        String docNo = doc.get("DOCNO");
-                        if (docNo == null || docNo.isEmpty()) {
-                            continue; 
-                        }
-                        
-                        String trecLine = String.format(
-                            "%s Q0 %s %d %.4f %s", 
-                            topic.number, docNo, rank + 1, hit.score, RUN_TAG
-                        );
-                        writer.println(trecLine);
-                        totalResultsWritten++;
-                    }
-                    writer.flush(); 
+            // TEXT 字段（description / narrative）：只做 bag-of-words，不自动短语
+            QueryParser textParser = new QueryParser("TEXT", analyzer);
+            textParser.setAutoGeneratePhraseQueries(false);
 
-                } catch (org.apache.lucene.queryparser.classic.ParseException e) {
-                    System.err.println("Error parsing query for topic " + topic.number + ": " + e.getMessage());
-                }
+            // 解析 topics
+            TopicParser topicParser = new TopicParser();
+            List<Topic> topics = topicParser.parse(topicsPath);
+
+            // 确保输出目录存在
+            if (outputRun.getParent() != null) {
+                Files.createDirectories(outputRun.getParent());
             }
-            System.out.println("Finished searching. Wrote " + totalResultsWritten + " results.");
-            System.out.println("Results saved to: " + outputRun.toAbsolutePath());
-            
-        } finally {
-            reader.close(); 
+
+            int totalResultsWritten = 0;
+
+            try (PrintWriter writer =
+                         new PrintWriter(Files.newBufferedWriter(outputRun, StandardCharsets.UTF_8))) {
+
+                for (Topic topic : topics) {
+
+                    BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
+
+                    try {
+                        // -------------------------
+                        // 1) TITLE：权重最高（3.5）
+                        // -------------------------
+                        if (!isNullOrEmpty(topic.title)) {
+                            String escapedTitle = QueryParser.escape(topic.title);
+                            Query titleQuery = titleParser.parse(escapedTitle);
+                            queryBuilder.add(
+                                    new BoostQuery(titleQuery, 3.5f),
+                                    BooleanClause.Occur.SHOULD
+                            );
+                        }
+
+                        // -------------------------
+                        // 2) DESCRIPTION：中等权重（1.7）
+                        // -------------------------
+                        if (!isNullOrEmpty(topic.description)) {
+                            String escapedDesc = QueryParser.escape(topic.description);
+                            Query descQuery = textParser.parse(escapedDesc);
+                            queryBuilder.add(
+                                    new BoostQuery(descQuery, 1.7f),
+                                    BooleanClause.Occur.SHOULD
+                            );
+                        }
+
+                        // -------------------------
+                        // 3) NARRATIVE：过滤负例 + 截断，仅轻微补充
+                        // -------------------------
+                        if (!isNullOrEmpty(topic.narrative)) {
+                            String cleanNarrative = filterNegativeNarrative(topic.narrative);
+                            if (!isNullOrEmpty(cleanNarrative)) {
+                                String escapedNarr = QueryParser.escape(cleanNarrative);
+                                Query narrQuery = textParser.parse(escapedNarr);
+                                // 这里不额外 Boost，保持默认 1.0 权重
+                                queryBuilder.add(
+                                        narrQuery,
+                                        BooleanClause.Occur.SHOULD
+                                );
+                            }
+                        }
+
+                        BooleanQuery finalQuery = queryBuilder.build();
+
+                        // 如果这个 topic 没有任何子句，就跳过
+                        if (finalQuery.clauses().isEmpty()) {
+                            System.err.println("Empty query for topic " + topic.number + ", skipping.");
+                            continue;
+                        }
+
+                        // 执行检索
+                        TopDocs topDocs = searcher.search(finalQuery, numDocs);
+                        ScoreDoc[] hits = topDocs.scoreDocs;
+
+                        for (int rank = 0; rank < hits.length; rank++) {
+                            ScoreDoc hit = hits[rank];
+                            Document doc = searcher.doc(hit.doc);
+
+                            // DOCNO 字段名要和你 index 时一致
+                            String docNo = doc.get("DOCNO");
+                            if (isNullOrEmpty(docNo)) {
+                                continue;
+                            }
+
+                            // TREC format: qid Q0 docno rank score runTag
+                            writer.printf(
+                                    "%s Q0 %s %d %.4f %s%n",
+                                    topic.number,
+                                    docNo,
+                                    rank + 1,
+                                    hit.score,
+                                    RUN_TAG
+                            );
+                            totalResultsWritten++;
+                        }
+
+                        writer.flush();
+
+                    } catch (org.apache.lucene.queryparser.classic.ParseException e) {
+                        System.err.println("Error parsing query for topic " + topic.number + ": " + e.getMessage());
+                    }
+                }
+
+                System.out.println("Finished searching. Wrote " + totalResultsWritten + " results.");
+                System.out.println("Results saved to: " + outputRun.toAbsolutePath());
+            }
         }
     }
 
+    /**
+     * 过滤 narrative 中明显的“负例句子”，并最多保留 2 句正向描述，
+     * 避免 query 过长影响 BM25。
+     */
     private String filterNegativeNarrative(String narrative) {
-        StringBuilder cleanText = new StringBuilder();
         String[] sentences = narrative.split("[\\.\\;\\n]");
-        
-        for (String sentence : sentences) {
+        StringBuilder clean = new StringBuilder();
+        int added = 0;
+
+        for (String raw : sentences) {
+            String sentence = raw.trim();
+            if (sentence.isEmpty()) continue;
+
             String lower = sentence.toLowerCase();
-            if (lower.contains("not relevant") || 
-                lower.contains("irrelevant")) {
-                continue; 
+            if (lower.contains("not relevant") || lower.contains("irrelevant")) {
+                // 负例句子直接跳过
+                continue;
             }
-            cleanText.append(sentence).append(" ");
+
+            clean.append(sentence).append(' ');
+            added++;
+
+            // 最多保留两句
+            if (added >= 2) break;
         }
-        return cleanText.toString();
+
+        return clean.toString().trim();
+    }
+
+    private boolean isNullOrEmpty(String s) {
+        return s == null || s.trim().isEmpty();
     }
 }
