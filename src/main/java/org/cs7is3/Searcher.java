@@ -7,6 +7,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;     
 
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.Map.Entry;
+import java.util.Collections;
+
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
@@ -48,6 +56,8 @@ public class Searcher {
     // PRF 参数：用前 fbDocs 篇文档做伪相关反馈，扩展查询权重 prfBoost
     private static final int FB_DOCS = 10;       // 你可以试 5 或 10
     private static final float PRF_BOOST = 0.5f; // 扩展查询的权重（0.4 ~ 0.8 之间可调）
+    
+    private static final int MAX_FEEDBACK_TERMS = 40;
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         
@@ -200,64 +210,78 @@ public class Searcher {
      * - 用 textParser 解析成反馈查询，并以 prfBoost 加到原查询上
      */
     private Query buildPrfQuery(IndexSearcher searcher,
-                                Query originalQuery,
-                                QueryParser textParser,
-                                int fbDocs,
-                                float prfBoost) throws IOException, ParseException {
+                            Query originalQuery,
+                            QueryParser textParser,
+                            int fbDocs,
+                            float prfBoost) throws IOException, ParseException {
 
-        // 1) 初次检索，取反馈文档
-        TopDocs fbTopDocs = searcher.search(originalQuery, fbDocs);
-        ScoreDoc[] fbHits = fbTopDocs.scoreDocs;
+    // 1) 初次检索，取反馈文档
+    TopDocs fbTopDocs = searcher.search(originalQuery, fbDocs);
+    ScoreDoc[] fbHits = fbTopDocs.scoreDocs;
 
-        if (fbHits.length == 0) {
-            // 没有结果，直接用原始查询
-            return originalQuery;
-        }
-
-        StringBuilder fbTextBuilder = new StringBuilder();
-        int usedDocs = 0;
-
-        for (ScoreDoc sd : fbHits) {
-            Document d = searcher.doc(sd.doc);
-            String text = d.get("TEXT"); // 字段名要和索引时一致
-            if (text != null && !text.isEmpty()) {
-                fbTextBuilder.append(text).append(' ');
-                usedDocs++;
-            }
-            if (usedDocs >= fbDocs) {
-                break;
-            }
-        }
-
-        String fbRaw = fbTextBuilder.toString().trim();
-        if (fbRaw.isEmpty()) {
-            // 没有可用反馈文本，返回原始查询
-            return originalQuery;
-        }
-
-        // 2) 简单截断，避免 query 过长（比如最多 300 个 token）
-        String[] tokens = fbRaw.split("\\s+");
-        int maxTokens = Math.min(tokens.length, 300);
-        StringBuilder truncated = new StringBuilder();
-        for (int i = 0; i < maxTokens; i++) {
-            truncated.append(tokens[i]).append(' ');
-        }
-
-        String fbText = truncated.toString().trim();
-        if (fbText.isEmpty()) {
-            return originalQuery;
-        }
-
-        // 3) 解析反馈文本为查询
-        Query fbQuery = textParser.parse(QueryParser.escape(fbText));
-
-        // 4) 合并原始查询和反馈查询
-        BooleanQuery.Builder prfBuilder = new BooleanQuery.Builder();
-        prfBuilder.add(originalQuery, BooleanClause.Occur.SHOULD); // 原始查询
-        prfBuilder.add(new BoostQuery(fbQuery, prfBoost), BooleanClause.Occur.SHOULD); // 扩展部分
-
-        return prfBuilder.build();
+    if (fbHits.length == 0) {
+        // 没有结果，直接用原始查询
+        return originalQuery;
     }
+
+    // 全局 term 频率统计
+    Map<String, Integer> termFreq = new HashMap<>();
+
+    for (int i = 0; i < Math.min(fbDocs, fbHits.length); i++) {
+        Document d = searcher.doc(fbHits[i].doc);
+        String text = d.get("TEXT"); // 字段名要和索引时一致
+        if (text == null || text.isEmpty()) {
+            continue;
+        }
+
+        // 用同一个 analyzer 分词
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(text))) {
+            CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            while (ts.incrementToken()) {
+                String term = termAttr.toString();
+                // 略微过滤一下太短的 token
+                if (term.length() < 2) {
+                    continue;
+                }
+                termFreq.merge(term, 1, Integer::sum);
+            }
+            ts.end();
+        }
+    }
+
+    if (termFreq.isEmpty()) {
+        return originalQuery;
+    }
+
+    // 2) 按频率从高到低排序
+    List<Entry<String, Integer>> entries = new ArrayList<>(termFreq.entrySet());
+    Collections.sort(entries, (a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+    // 3) 取前 MAX_FEEDBACK_TERMS 个 term 拼成反馈文本
+    int limit = Math.min(MAX_FEEDBACK_TERMS, entries.size());
+    StringBuilder fbTextBuilder = new StringBuilder();
+    for (int i = 0; i < limit; i++) {
+        String term = entries.get(i).getKey();
+        fbTextBuilder.append(term).append(' ');
+    }
+
+    String fbText = fbTextBuilder.toString().trim();
+    if (fbText.isEmpty()) {
+        return originalQuery;
+    }
+
+    // 4) 解析反馈文本为查询
+    Query fbQuery = textParser.parse(fbText);
+
+    // 5) 合并原始查询和反馈查询
+    BooleanQuery.Builder prfBuilder = new BooleanQuery.Builder();
+    prfBuilder.add(originalQuery, BooleanClause.Occur.SHOULD);                // 原始查询
+    prfBuilder.add(new BoostQuery(fbQuery, prfBoost), BooleanClause.Occur.SHOULD); // 扩展部分
+
+    return prfBuilder.build();
+}
+
 
     /**
      * 过滤 narrative 中包含 "not relevant" / "irrelevant" 的负例句子。
