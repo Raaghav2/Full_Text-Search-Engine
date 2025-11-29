@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     runs-on: self-hosted
-    env:
+    # env:
     #  LEADERBOARD_API_URL: ${{ secrets.LEADERBOARD_API_URL }}
     #  LEADERBOARD_API_TOKEN: ${{ secrets.LEADERBOARD_API_TOKEN }}
     steps:
