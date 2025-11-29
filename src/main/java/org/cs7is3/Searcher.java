@@ -47,7 +47,7 @@ public class Searcher {
 
     // PRF 参数：用前 fbDocs 篇文档做伪相关反馈，扩展查询权重 prfBoost
     private static final int FB_DOCS = 5;       // 你可以试 5 或 10
-    private static final float PRF_BOOST = 0.8f; // 扩展查询的权重（0.4 ~ 0.8 之间可调）
+    private static final float PRF_BOOST = 0.7f; // 扩展查询的权重（0.4 ~ 0.8 之间可调）
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         
