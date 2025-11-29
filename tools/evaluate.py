@@ -4,7 +4,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
-# Simple evaluator for TREC-style runs. Computes MAP, P@20, nDCG@20.
+# Simple evaluator for TREC-style runs. Computes MAP, P@5, P@20, nDCG@20.
 
 def read_qrels(qrels_path):
     qrels = defaultdict(dict)  # topic -> docid -> rel (0/1)
@@ -79,16 +79,19 @@ def ndcg_at_k(retrieved, relevant_set, k):
 
 def evaluate(qrels, run):
     ap_scores = []
+    p5_scores = []
     p20_scores = []
     ndcg20_scores = []
     for qid, rels in qrels.items():
         relevant_set = {d for d, r in rels.items() if r > 0}
         retrieved = run.get(qid, [])
         ap_scores.append(average_precision(retrieved, relevant_set))
+        p5_scores.append(precision_at_k(retrieved, relevant_set, 5))
         p20_scores.append(precision_at_k(retrieved, relevant_set, 20))
         ndcg20_scores.append(ndcg_at_k(retrieved, relevant_set, 20))
     metrics = {
         "MAP": sum(ap_scores) / len(ap_scores) if ap_scores else 0.0,
+        "P@5": sum(p5_scores) / len(p5_scores) if p5_scores else 0.0,
         "P@20": sum(p20_scores) / len(p20_scores) if p20_scores else 0.0,
         "nDCG@20": sum(ndcg20_scores) / len(ndcg20_scores) if ndcg20_scores else 0.0,
     }
@@ -110,6 +113,7 @@ def main():
         rows.append({
             "run": run_path.name,
             "MAP": metrics["MAP"],
+            "P@5": metrics["P@5"],
             "P@20": metrics["P@20"],
             "nDCG@20": metrics["nDCG@20"],
         })
@@ -119,7 +123,10 @@ def main():
     # Write CSV
     args.out_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["rank", "run", "MAP", "P@20", "nDCG@20"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=["rank", "run", "MAP", "P@5", "P@20", "nDCG@20"],
+        )
         w.writeheader()
         for i, r in enumerate(rows, start=1):
             w.writerow({
@@ -129,10 +136,13 @@ def main():
 
     # Write Markdown
     with open(args.out_md, "w", encoding="utf-8") as f:
-        f.write("| Rank | Run | MAP | P@20 | nDCG@20 |\n")
-        f.write("|---:|:---|---:|---:|---:|\n")
+        f.write("| Rank | Run | MAP | P@5 | P@20 | nDCG@20 |\n")
+        f.write("|---:|:---|---:|---:|---:|---:|\n")
         for i, r in enumerate(rows, start=1):
-            f.write(f"| {i} | {r['run']} | {r['MAP']:.4f} | {r['P@20']:.4f} | {r['nDCG@20']:.4f} |\n")
+            f.write(
+                f"| {i} | {r['run']} | {r['MAP']:.4f} | {r['P@5']:.4f} | "
+                f"{r['P@20']:.4f} | {r['nDCG@20']:.4f} |\n"
+            )
 
     print(f"Wrote standings to {args.out_csv} and {args.out_md}")
 
