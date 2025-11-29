@@ -71,7 +71,7 @@ public class Searcher {
                     BooleanQuery.Builder finalQ = new BooleanQuery.Builder();
                     finalQ.add(anchor.build(), BooleanClause.Occur.SHOULD);
                     if (!exp.isEmpty()) {
-                        finalQ.add(new BoostQuery(parser.parse(QueryParser.escape(String.join(" ", exp))), 0.5f), BooleanClause.Occur.SHOULD);
+                        finalQ.add(new BoostQuery(parser.parse(QueryParser.escape(String.join(" ", exp))), 0.5f), BooleanClause.Occur.SHOULD);//build the final query
                     }
 
                     ScoreDoc[] hits = searcher.search(finalQ.build(), numDocs).scoreDocs;
