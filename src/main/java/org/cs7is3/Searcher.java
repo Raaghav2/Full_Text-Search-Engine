@@ -151,17 +151,26 @@ public class Searcher {
     }
 
     private String filterNegativeNarrative(String narrative) {
-        StringBuilder cleanText = new StringBuilder();
-        String[] sentences = narrative.split("[\\.\\;\\n]");
-        
-        for (String sentence : sentences) {
-            String lower = sentence.toLowerCase();
-            if (lower.contains("not relevant") || 
-                lower.contains("irrelevant")) {
-                continue; 
-            }
-            cleanText.append(sentence).append(" ");
+    String[] sentences = narrative.split("[\\.\\;\\n]");
+    StringBuilder cleanText = new StringBuilder();
+    int added = 0;
+
+    for (String sentence : sentences) {
+        String trimmed = sentence.trim();
+        if (trimmed.isEmpty()) continue;
+
+        String lower = trimmed.toLowerCase();
+        if (lower.contains("not relevant") || lower.contains("irrelevant")) {
+            // 负例句直接跳过
+            continue;
         }
-        return cleanText.toString();
+
+        cleanText.append(trimmed).append(" ");
+        added++;
+
+        // 最多保留前两句
+        if (added >= 2) break;
     }
+    return cleanText.toString().trim();
+}
 }
