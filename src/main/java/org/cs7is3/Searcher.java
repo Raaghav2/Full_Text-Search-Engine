@@ -1,167 +1,129 @@
 package org.cs7is3;
 
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.nio.file.Path;
-import java.util.HashMap; 
-import java.util.List;
-import java.util.Map;     
-
+import java.util.*;
+import java.util.stream.Collectors;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-
-// Imports for Advanced Querying
-import org.apache.lucene.queryparser.classic.QueryParser; 
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.BoostQuery;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.index.*;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.*;
+import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
 
-// Imports for Mixed Similarity
-import org.apache.lucene.search.similarities.BM25Similarity;
-import org.apache.lucene.search.similarities.IBSimilarity;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
-import org.apache.lucene.search.similarities.DistributionSPL; 
-import org.apache.lucene.search.similarities.LambdaDF;        
-import org.apache.lucene.search.similarities.NormalizationH2; 
-
 public class Searcher {
-
-    // Use our new CustomAnalyzer
-    private final Analyzer analyzer = new CustomAnalyzer(); 
-    private static final String RUN_TAG = "CS7IS3_Ultimate_Boosted_Phrase_KStem";
+    private final Analyzer analyzer = new EnglishAnalyzer();
+    private static final String RUN_TAG = "CS7IS3_Entity_RM3_Compact";
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
-        
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
         IndexSearcher searcher = new IndexSearcher(reader);
+        searcher.setSimilarity(new BM25Similarity(1.2f, 0.75f));
 
-        // ===========================================================================
-        // 1. MIXED SIMILARITY SETUP
-        // ===========================================================================
-        final Map<String, Similarity> fieldSims = new HashMap<>();
-        fieldSims.put("TITLE", new IBSimilarity(new DistributionSPL(), new LambdaDF(), new NormalizationH2()));
-        fieldSims.put("TEXT", new BM25Similarity());
-        
-        final Similarity defaultSim = new BM25Similarity();
-        
-        Similarity mixedSimilarity = new PerFieldSimilarityWrapper() {
-            @Override
-            public Similarity get(String fieldName) {
-                return fieldSims.getOrDefault(fieldName, defaultSim);
-            }
-        };
-        searcher.setSimilarity(mixedSimilarity); 
-        
-        // Title Parser
-        QueryParser titleParser = new QueryParser("TITLE", analyzer);
-        titleParser.setSplitOnWhitespace(true); 
-        titleParser.setAutoGeneratePhraseQueries(true); 
-        titleParser.setPhraseSlop(2); 
+        QueryParser parser = new QueryParser("TEXT", analyzer);
+        parser.setSplitOnWhitespace(true);
 
-        // Text Parser
-        QueryParser textParser = new QueryParser("TEXT", analyzer);
-        textParser.setSplitOnWhitespace(true); 
-        textParser.setAutoGeneratePhraseQueries(true); 
-        textParser.setPhraseSlop(8); 
-
-        TopicParser topicParser = new TopicParser();
-        List<Topic> topics = topicParser.parse(topicsPath);
-        
-        int totalResultsWritten = 0; 
-        
-        // --- Ensure output directory exists ---
-        if (outputRun.getParent() != null) {
-            outputRun.getParent().toFile().mkdirs();
-        }
+        List<Topic> topics = new TopicParser().parse(topicsPath);
+        if (outputRun.getParent() != null) outputRun.getParent().toFile().mkdirs();
+        int totalDocs = reader.maxDoc();
 
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
-                
-                // ===========================================================================
-                // 3. BOOSTED QUERY CONSTRUCTION
-                // ===========================================================================
-                BooleanQuery.Builder queryBuilder = new BooleanQuery.Builder();
-                
                 try {
-                    // --- Title: Boost 3.5 ---
-                    if (topic.title != null && !topic.title.isEmpty()) {
-                        Query titleQuery = titleParser.parse(QueryParser.escape(topic.title));
-                        queryBuilder.add(new BoostQuery(titleQuery, 3.5f), BooleanClause.Occur.SHOULD);
+                    BooleanQuery.Builder anchor = new BooleanQuery.Builder();
+                    if (topic.title != null) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(topic.title)), 3.0f), BooleanClause.Occur.SHOULD);
+                    if (topic.description != null) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(topic.description)), 1.3f), BooleanClause.Occur.SHOULD);
+                    if (topic.narrative != null) {
+                        String n = filterNarrative(topic.narrative);
+                        if (!n.isEmpty()) anchor.add(new BoostQuery(parser.parse(QueryParser.escape(n)), 0.5f), BooleanClause.Occur.SHOULD);
                     }
 
-                    // --- Description: Boost 1.7 ---
-                    if (topic.description != null && !topic.description.isEmpty()) {
-                        Query descQuery = textParser.parse(QueryParser.escape(topic.description));
-                        queryBuilder.add(new BoostQuery(descQuery, 1.7f), BooleanClause.Occur.SHOULD);
-                    }
+                    TopDocs pilot = searcher.search(anchor.build(), 20);// see the top 20 docs for query expansion
+                    Map<String, Double> weights = new HashMap<>();
+                    Set<String> original = getQueryTerms(topic);
 
-                    // --- Narrative: Filtered, Boost 1.0 ---
-                    if (topic.narrative != null && !topic.narrative.isEmpty()) {
-                        String cleanNarrative = filterNegativeNarrative(topic.narrative);
+                    for (ScoreDoc hit : pilot.scoreDocs) {
+                        String text = searcher.doc(hit.doc).get("TEXT");
+                        if (text == null) continue;
                         
-                        if (!cleanNarrative.trim().isEmpty()) {
-                            Query narrQuery = textParser.parse(QueryParser.escape(cleanNarrative));
-                            queryBuilder.add(narrQuery, BooleanClause.Occur.SHOULD);
+                        Map<String, Boolean> terms = analyze(text);
+                        for (Map.Entry<String, Boolean> e : terms.entrySet()) {
+                            String t = e.getKey();
+                            if (original.contains(t)) continue;
+
+                            int df = reader.docFreq(new Term("TEXT", t));
+                            if (df < 2 || df > (totalDocs * 0.15)) continue;//remove if they occur to frquently
+
+                            double w = (Math.log((double)totalDocs / (df + 1)) + 1.0) * hit.score;
+                            if (e.getValue()) w *= 1.25;//look if they are an entity
+                            weights.put(t, weights.getOrDefault(t, 0.0) + w);
                         }
                     }
-                    
-                    BooleanQuery finalQuery = queryBuilder.build();
-                    
-                    // ===========================================================================
-                    // 4. EXECUTE SEARCH
-                    // ===========================================================================
-                    ScoreDoc[] hits = searcher.search(finalQuery, numDocs).scoreDocs;
 
-                    for (int rank = 0; rank < hits.length; rank++) {
-                        ScoreDoc hit = hits[rank];
-                        Document doc = searcher.doc(hit.doc);
-                        
-                        String docNo = doc.get("DOCNO");
-                        if (docNo == null || docNo.isEmpty()) {
-                            continue; 
-                        }
-                        
-                        String trecLine = String.format(
-                            "%s Q0 %s %d %.4f %s", 
-                            topic.number, docNo, rank + 1, hit.score, RUN_TAG
-                        );
-                        writer.println(trecLine);
-                        totalResultsWritten++;
+                    List<String> exp = weights.entrySet().stream()
+                        .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                        .limit(40).map(Map.Entry::getKey).collect(Collectors.toList());// add the top 40 to your list
+
+                    BooleanQuery.Builder finalQ = new BooleanQuery.Builder();
+                    finalQ.add(anchor.build(), BooleanClause.Occur.SHOULD);
+                    if (!exp.isEmpty()) {
+                        finalQ.add(new BoostQuery(parser.parse(QueryParser.escape(String.join(" ", exp))), 0.5f), BooleanClause.Occur.SHOULD);//build the final query
                     }
-                    writer.flush(); 
 
-                } catch (org.apache.lucene.queryparser.classic.ParseException e) {
-                    System.err.println("Error parsing query for topic " + topic.number + ": " + e.getMessage());
-                }
+                    ScoreDoc[] hits = searcher.search(finalQ.build(), numDocs).scoreDocs;
+                    for (int i = 0; i < hits.length; i++) {
+                        writer.printf("%s Q0 %s %d %.4f %s%n", topic.number, searcher.doc(hits[i].doc).get("DOCNO"), i + 1, hits[i].score, RUN_TAG);
+                    }
+                    writer.flush();
+                } catch (Exception e) { System.err.println("Error: " + topic.number); }
             }
-            System.out.println("Finished searching. Wrote " + totalResultsWritten + " results.");
-            System.out.println("Results saved to: " + outputRun.toAbsolutePath());
-            
-        } finally {
-            reader.close(); 
-        }
+            System.out.println("Search Complete.");
+        } finally { reader.close(); }
     }
 
-    private String filterNegativeNarrative(String narrative) {
-        StringBuilder cleanText = new StringBuilder();
-        String[] sentences = narrative.split("[\\.\\;\\n]");
-        
-        for (String sentence : sentences) {
-            String lower = sentence.toLowerCase();
-            if (lower.contains("not relevant") || 
-                lower.contains("irrelevant")) {
-                continue; 
-            }
-            cleanText.append(sentence).append(" ");
+    private Map<String, Boolean> analyze(String text) throws IOException {
+        Map<String, Boolean> map = new HashMap<>();
+        Set<String> caps = new HashSet<>();
+        String[] raw = text.split("\\s+"); //split the words
+        int max = Math.min(raw.length, 200); //check only the top200
+        for (int i = 0; i < max; i++) {
+            if (raw[i].length() > 0 && Character.isUpperCase(raw[i].charAt(0)))// if the word is uppercase, it is an entity
+                caps.add(raw[i].replaceAll("[^a-zA-Z]", "").toLowerCase());// store the lowercase version in the set
         }
-        return cleanText.toString();
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(text))) {
+            CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            int c = 0;
+            while (ts.incrementToken() && c++ < 200) {
+                String s = term.toString();
+                if (s.length() > 3 && !s.matches(".*\\d.*")) map.put(s, caps.contains(s));//add the term to the map:True/False
+            }
+            ts.end();
+        }
+        return map;
+    }
+
+    private Set<String> getQueryTerms(Topic t) throws IOException {
+        Set<String> s = new HashSet<>();
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader((t.title != null ? t.title : "") + " " + (t.description != null ? t.description : "")))) {
+            CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            while (ts.incrementToken()) s.add(term.toString());
+            ts.end();
+        }
+        return s;
+    }
+
+    private String filterNarrative(String n) {
+        StringBuilder sb = new StringBuilder();
+        for (String s : n.split("[\\s\\.\\;\\n]+")) {
+            String l = s.toLowerCase().replaceAll("[^a-z]", "");
+            if (!l.contains("not") && !l.contains("irrelevant") && !l.isEmpty()) sb.append(s).append(" ");//remove narrative which isnt relevant    
+        }
+        return sb.toString();
     }
 }

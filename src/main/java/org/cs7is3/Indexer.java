@@ -3,8 +3,8 @@ package org.cs7is3;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List; 
-
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer; // STANDARD ANALYZER
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -18,70 +18,55 @@ import org.cs7is3.Parsers.LATimesParser;
 
 public class Indexer {
 
-    // Use our new CustomAnalyzer
-    public Analyzer analyzer = new CustomAnalyzer();
+    public Analyzer analyzer = new EnglishAnalyzer();
 
-    public Indexer(Analyzer analyzer) {
-        this.analyzer = analyzer;
+    public Indexer(Analyzer ignored) {
+        this.analyzer = new EnglishAnalyzer();
     }
 
     public void buildIndex(Path docsPath, Path indexPath) throws java.io.IOException {
         Directory directory = FSDirectory.open(Paths.get(indexPath.toString()));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         
-        // Create new index (overwrite old one)
         config.setOpenMode(OpenMode.CREATE);
-        // Optimize RAM usage
-        config.setRAMBufferSizeMB(256.0); 
         
+        // --- KEY SPEED OPTIMIZATION ---
+        // 1. Prioritize large RAM buffer for indexing speed (512MB)
+        config.setRAMBufferSizeMB(512.0); 
+        // 2. We allow Lucene to decide when to flush automatically
+        // ------------------------------
+
         IndexWriter writer = new IndexWriter(directory, config);
 
-        System.out.println("Starting incremental parsing with CustomAnalyzer...");
-        long totalDocs = 0;
+        System.out.println("Indexing with EnglishAnalyzer (HIGH SPEED MODE)...");
         
-        // --- FBIS ---
-        Path fbisPath = docsPath.resolve("fbis");
-        System.out.println("Processing FBIS documents...");
-        List<Document> fbisDocs = FBISParser.parseFBIS(fbisPath.toString());
-        writer.addDocuments(fbisDocs);
-        totalDocs += fbisDocs.size();
-        System.out.printf("-> Indexed %d FBIS docs.%n", fbisDocs.size());
-        fbisDocs.clear(); fbisDocs = null; System.gc(); // Clear Memory
+        // We call indexCorpus sequentially, allowing Lucene to flush only when the 
+        // 512MB buffer is full, not after every single newspaper corpus.
+        indexCorpus(writer, docsPath.resolve("fbis"), "FBIS");
+        indexCorpus(writer, docsPath.resolve("fr94"), "FR94");
+        indexCorpus(writer, docsPath.resolve("ft"), "FT");
+        indexCorpus(writer, docsPath.resolve("latimes"), "LATimes");
 
-        // --- FR94 ---
-        Path fr94Path = docsPath.resolve("fr94");
-        System.out.println("Processing FR94 documents...");
-        List<Document> fr94Docs = FR94Parser.parseFR94(fr94Path.toString());
-        writer.addDocuments(fr94Docs);
-        totalDocs += fr94Docs.size();
-        System.out.printf("-> Indexed %d FR94 docs.%n", fr94Docs.size());
-        fr94Docs.clear(); fr94Docs = null; System.gc(); // Clear Memory
-
-        // --- FT ---
-        Path ftPath = docsPath.resolve("ft");
-        System.out.println("Processing FT documents...");
-        List<Document> ftDocs = FTParser.parseFT(ftPath.toString());
-        writer.addDocuments(ftDocs);
-        totalDocs += ftDocs.size();
-        System.out.printf("-> Indexed %d FT docs.%n", ftDocs.size());
-        ftDocs.clear(); ftDocs = null; System.gc(); // Clear Memory
-
-        // --- LA Times ---
-        Path latimesPath = docsPath.resolve("latimes");
-        System.out.println("Processing LA Times documents...");
-        List<Document> latimesDocs = LATimesParser.parseLATimes(latimesPath.toString());
-        writer.addDocuments(latimesDocs);
-        totalDocs += latimesDocs.size();
-        System.out.printf("-> Indexed %d LA Times docs.%n", latimesDocs.size());
-        latimesDocs.clear(); latimesDocs = null; System.gc(); // Clear Memory
-
-        System.out.printf("%nTotal documents indexed: %d%n", totalDocs);
+        // NOTE: We skip the final slow writer.forceMerge(1) to save time.
         
-        System.out.println("Merging segments...");
-        writer.forceMerge(1); 
-        
-        writer.close();
+        writer.close(); // Flushes final segment and closes
         directory.close();
-        System.out.println("Indexing complete. Index created at: " + indexPath);
+        System.out.println("Indexing complete.");
+    }
+
+    private void indexCorpus(IndexWriter writer, Path path, String name) throws java.io.IOException {
+        System.out.println("Processing " + name + "...");
+        List<Document> docs;
+        // The code already indexes sequentially by newspaper, and clears memory afterward.
+        if (name.equals("FBIS")) docs = FBISParser.parseFBIS(path.toString());
+        else if (name.equals("FR94")) docs = FR94Parser.parseFR94(path.toString());
+        else if (name.equals("FT")) docs = FTParser.parseFT(path.toString());
+        else docs = LATimesParser.parseLATimes(path.toString());
+        
+        // ADD DOCUMENTS ONE BY ONE - Allows Lucene to decide when to flush
+        for (Document doc : docs) writer.addDocument(doc);
+        
+        // We REMOVE writer.commit() to rely on the fast RAM buffer.
+        docs.clear(); docs = null; System.gc();
     }
 }
