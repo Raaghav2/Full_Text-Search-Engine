@@ -1,6 +1,8 @@
 package org.cs7is3;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringReader;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,7 +23,7 @@ import org.cs7is3.TopicParser.Topic;
 public class Searcher {
 
     private final Analyzer analyzer = new EnglishAnalyzer();
-    private static final String RUN_TAG = "CS7IS3_TwoStage_SDM_Entity_RM3";
+    private static final String RUN_TAG = "CS7IS3_SDM_Entity_RM3_BM25F";
 
     private static final int FEEDBACK_DOCS = 20;
     private static final int EXPANSION_TERMS = 40;
@@ -31,6 +33,8 @@ public class Searcher {
     private static final float DESC_BOOST = 1.3f;
     private static final float NARR_BOOST = 0.5f;
 
+    private static final float HEADLINE_BOOST = 3.0f;
+
     private static final double MAX_DF_RATIO = 0.15;
     private static final int MAX_FEEDBACK_TOKENS = 200;
 
@@ -38,18 +42,17 @@ public class Searcher {
     private static final float SDM_PHRASE_WEIGHT = 0.2f;
     private static final int PHRASE_SLOP = 1;
 
-    private static final int RERANK_CANDIDATES = 1000;
-    private static final double RERANK_TERM_WEIGHT = 0.8;
-    private static final double RERANK_BIGRAM_WEIGHT = 0.5;
-    private static final double RERANK_LEN_PENALTY = 0.1;
-
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
         IndexSearcher searcher = new IndexSearcher(reader);
         searcher.setSimilarity(new BM25Similarity(1.2f, 0.75f));
 
-        QueryParser parser = new QueryParser("TEXT", analyzer);
-        parser.setSplitOnWhitespace(true);
+        QueryParser textParser = new QueryParser("TEXT", analyzer);
+        textParser.setSplitOnWhitespace(true);
+        QueryParser headParser = new QueryParser("HEADLINE", analyzer);
+        headParser.setSplitOnWhitespace(true);
+        QueryParser expParser = new QueryParser("TEXT", analyzer);
+        expParser.setSplitOnWhitespace(true);
 
         List<Topic> topics = new TopicParser().parse(topicsPath);
         if (outputRun.getParent() != null) {
@@ -65,7 +68,7 @@ public class Searcher {
                     if (topic.title != null && !topic.title.isEmpty()) {
                         anchorBuilder.add(
                                 new BoostQuery(
-                                        parser.parse(QueryParser.escape(topic.title)),
+                                        textParser.parse(QueryParser.escape(topic.title)),
                                         TITLE_BOOST
                                 ),
                                 BooleanClause.Occur.SHOULD
@@ -75,19 +78,20 @@ public class Searcher {
                     if (topic.description != null && !topic.description.isEmpty()) {
                         anchorBuilder.add(
                                 new BoostQuery(
-                                        parser.parse(QueryParser.escape(topic.description)),
+                                        textParser.parse(QueryParser.escape(topic.description)),
                                         DESC_BOOST
                                 ),
                                 BooleanClause.Occur.SHOULD
                         );
                     }
 
+                    String filteredNarr = null;
                     if (topic.narrative != null && !topic.narrative.isEmpty()) {
-                        String n = filterNarrative(topic.narrative);
-                        if (!n.isEmpty()) {
+                        filteredNarr = filterNarrative(topic.narrative);
+                        if (!filteredNarr.isEmpty()) {
                             anchorBuilder.add(
                                     new BoostQuery(
-                                            parser.parse(QueryParser.escape(n)),
+                                            textParser.parse(QueryParser.escape(filteredNarr)),
                                             NARR_BOOST
                                     ),
                                     BooleanClause.Occur.SHOULD
@@ -95,12 +99,23 @@ public class Searcher {
                         }
                     }
 
+                    StringBuilder qsb = new StringBuilder();
+                    if (topic.title != null) qsb.append(topic.title).append(' ');
+                    if (topic.description != null) qsb.append(topic.description).append(' ');
+                    if (filteredNarr != null) qsb.append(filteredNarr);
+
+                    String qStr = qsb.toString().trim();
+                    if (!qStr.isEmpty()) {
+                        Query headQ = headParser.parse(QueryParser.escape(qStr));
+                        anchorBuilder.add(
+                                new BoostQuery(headQ, HEADLINE_BOOST),
+                                BooleanClause.Occur.SHOULD
+                        );
+                    }
+
                     Query anchorUnigram = anchorBuilder.build();
 
                     List<String> termList = getQueryTermList(topic);
-                    List<String> queryTerms = new ArrayList<>(new LinkedHashSet<>(termList));
-                    List<String> queryBigrams = getQueryBigrams(termList);
-
                     Query sdmQuery = buildSDMQuery(anchorUnigram, termList);
 
                     TopDocs pilot = searcher.search(sdmQuery, FEEDBACK_DOCS);
@@ -140,38 +155,23 @@ public class Searcher {
                         String expQueryStr = String.join(" ", exp);
                         finalQ.add(
                                 new BoostQuery(
-                                        parser.parse(QueryParser.escape(expQueryStr)),
+                                        expParser.parse(QueryParser.escape(expQueryStr)),
                                         EXPANSION_BOOST
                                 ),
                                 BooleanClause.Occur.SHOULD
                         );
                     }
 
-                    int rerankDocs = Math.max(numDocs, RERANK_CANDIDATES);
-                    TopDocs firstPass = searcher.search(finalQ.build(), rerankDocs);
-
-                    List<RerankedDoc> reranked = new ArrayList<>();
-                    for (ScoreDoc sd : firstPass.scoreDocs) {
-                        Document doc = searcher.doc(sd.doc);
+                    ScoreDoc[] hits = searcher.search(finalQ.build(), numDocs).scoreDocs;
+                    for (int i = 0; i < hits.length; i++) {
+                        Document doc = searcher.doc(hits[i].doc);
                         String docno = doc.get("DOCNO");
-                        String text = doc.get("TEXT");
-                        if (docno == null || text == null) continue;
-
-                        double finalScore = computeRerankScore(text, queryTerms, queryBigrams, sd.score);
-                        reranked.add(new RerankedDoc(sd.doc, docno, finalScore));
-                    }
-
-                    reranked.sort((a, b) -> Double.compare(b.score, a.score));
-
-                    int outN = Math.min(numDocs, reranked.size());
-                    for (int i = 0; i < outN; i++) {
-                        RerankedDoc rd = reranked.get(i);
                         writer.printf(
                                 "%s Q0 %s %d %.4f %s%n",
                                 topic.number,
-                                rd.docno,
+                                docno,
                                 i + 1,
-                                rd.score,
+                                hits[i].score,
                                 RUN_TAG
                         );
                     }
@@ -181,7 +181,7 @@ public class Searcher {
                     e.printStackTrace();
                 }
             }
-            System.out.println("Search Complete (Two-stage SDM + Entity RM3).");
+            System.out.println("Search Complete (SDM + Entity RM3 + BM25F-style fields).");
         } finally {
             reader.close();
         }
@@ -190,12 +190,10 @@ public class Searcher {
     private Query buildSDMQuery(Query anchorUnigram, List<String> terms) {
         BooleanQuery.Builder sdm = new BooleanQuery.Builder();
         sdm.add(new BoostQuery(anchorUnigram, SDM_UNIGRAM_WEIGHT), BooleanClause.Occur.SHOULD);
-
         Query phraseQ = buildPhraseBigrams(terms);
         if (phraseQ != null) {
             sdm.add(new BoostQuery(phraseQ, SDM_PHRASE_WEIGHT), BooleanClause.Occur.SHOULD);
         }
-
         return sdm.build();
     }
 
@@ -206,7 +204,6 @@ public class Searcher {
             String t1 = terms.get(i);
             String t2 = terms.get(i + 1);
             if (t1.equals(t2)) continue;
-
             PhraseQuery.Builder pb = new PhraseQuery.Builder();
             pb.add(new Term("TEXT", t1), 0);
             pb.add(new Term("TEXT", t2), 1);
@@ -214,60 +211,6 @@ public class Searcher {
             b.add(pb.build(), BooleanClause.Occur.SHOULD);
         }
         return b.build();
-    }
-
-    private List<String> getQueryBigrams(List<String> terms) {
-        LinkedHashSet<String> set = new LinkedHashSet<>();
-        for (int i = 0; i + 1 < terms.size(); i++) {
-            String t1 = terms.get(i);
-            String t2 = terms.get(i + 1);
-            if (t1.equals(t2)) continue;
-            set.add(t1 + " " + t2);
-        }
-        return new ArrayList<>(set);
-    }
-
-    private double computeRerankScore(String text, List<String> queryTerms, List<String> queryBigrams, float firstStageScore) throws IOException {
-        if (text == null || text.isEmpty()) return firstStageScore;
-
-        Set<String> docTerms = new HashSet<>();
-        Set<String> docBigrams = new HashSet<>();
-        int len = 0;
-
-        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(text))) {
-            CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
-            ts.reset();
-            String prev = null;
-            while (ts.incrementToken()) {
-                String s = termAttr.toString();
-                len++;
-                docTerms.add(s);
-                if (prev != null) {
-                    docBigrams.add(prev + " " + s);
-                }
-                prev = s;
-            }
-            ts.end();
-        }
-
-        int matchedTerms = 0;
-        for (String qt : queryTerms) {
-            if (docTerms.contains(qt)) matchedTerms++;
-        }
-        double termCov = queryTerms.isEmpty() ? 0.0 : (double) matchedTerms / queryTerms.size();
-
-        int matchedBigrams = 0;
-        for (String bg : queryBigrams) {
-            if (docBigrams.contains(bg)) matchedBigrams++;
-        }
-        double bigramCov = queryBigrams.isEmpty() ? 0.0 : (double) matchedBigrams / queryBigrams.size();
-
-        double lenNorm = len > 0 ? Math.log(1.0 + len) : 0.0;
-
-        return firstStageScore
-                + RERANK_TERM_WEIGHT * termCov
-                + RERANK_BIGRAM_WEIGHT * bigramCov
-                - RERANK_LEN_PENALTY * lenNorm;
     }
 
     private Map<String, Boolean> analyze(String text) throws IOException {
@@ -303,7 +246,6 @@ public class Searcher {
         StringBuilder sb = new StringBuilder();
         if (t.title != null) sb.append(t.title).append(' ');
         if (t.description != null) sb.append(t.description).append(' ');
-
         try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(sb.toString()))) {
             CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
             ts.reset();
@@ -321,7 +263,6 @@ public class Searcher {
         if (t.title != null) sb.append(t.title).append(' ');
         if (t.description != null) sb.append(t.description).append(' ');
         if (t.narrative != null) sb.append(filterNarrative(t.narrative));
-
         try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(sb.toString()))) {
             CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
             ts.reset();
@@ -341,23 +282,9 @@ public class Searcher {
             if (l.contains("not")) continue;
             if (l.contains("irrelevant")) continue;
             if (l.contains("ignore")) continue;
+            if (l.contains("unrelated")) continue;
             sb.append(s).append(" ");
         }
         return sb.toString();
     }
-
-    private static class RerankedDoc {
-        final int docId;
-        final String docno;
-        final double score;
-
-        RerankedDoc(int docId, String docno, double score) {
-            this.docId = docId;
-            this.docno = docno;
-            this.score = score;
-        }
-    }
 }
-
-
-
