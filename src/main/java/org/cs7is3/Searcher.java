@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -23,10 +23,10 @@ import org.cs7is3.TopicParser.Topic;
 public class Searcher {
 
     private final Analyzer analyzer;
-    private static final String RUN_TAG = "CS7IS3_A1_Standard_BM25";
+    private static final String RUN_TAG = "CS7IS3_A2_English_BM25";
 
     public Searcher() {
-        this.analyzer = new StandardAnalyzer();
+        this.analyzer = new EnglishAnalyzer();
     }
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
@@ -85,7 +85,7 @@ public class Searcher {
                     e.printStackTrace();
                 }
             }
-            System.out.println("Search Complete (A1 - StandardAnalyzer + BM25).");
+            System.out.println("Search Complete (A2 - EnglishAnalyzer + BM25).");
         } finally {
             reader.close();
         }
