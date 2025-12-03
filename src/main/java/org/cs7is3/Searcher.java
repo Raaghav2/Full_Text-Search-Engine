@@ -21,14 +21,12 @@ import org.cs7is3.TopicParser.Topic;
 public class Searcher {
 
     private final Analyzer analyzer = new EnglishAnalyzer();
-    private static final String RUN_TAG = "CS7IS3_SDM_Entity_RM3_Phrase";
+    private static final String RUN_TAG = "CS7IS3_TwoStage_SDM_Entity_RM3";
 
-    // RM3 / PRF 参数
     private static final int FEEDBACK_DOCS = 20;
     private static final int EXPANSION_TERMS = 40;
     private static final float EXPANSION_BOOST = 0.5f;
 
-    // 原 query 各部分权重
     private static final float TITLE_BOOST = 3.0f;
     private static final float DESC_BOOST = 1.3f;
     private static final float NARR_BOOST = 0.5f;
@@ -36,10 +34,14 @@ public class Searcher {
     private static final double MAX_DF_RATIO = 0.15;
     private static final int MAX_FEEDBACK_TOKENS = 200;
 
-    // SDM-ish 参数：unigram + phrase
     private static final float SDM_UNIGRAM_WEIGHT = 0.8f;
     private static final float SDM_PHRASE_WEIGHT = 0.2f;
-    private static final int PHRASE_SLOP = 1; // 小窗口短语匹配
+    private static final int PHRASE_SLOP = 1;
+
+    private static final int RERANK_CANDIDATES = 1000;
+    private static final double RERANK_TERM_WEIGHT = 0.8;
+    private static final double RERANK_BIGRAM_WEIGHT = 0.5;
+    private static final double RERANK_LEN_PENALTY = 0.1;
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
@@ -58,7 +60,6 @@ public class Searcher {
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
                 try {
-                    // 1. 构造 anchor（原始 title/description/narrative 加权）
                     BooleanQuery.Builder anchorBuilder = new BooleanQuery.Builder();
 
                     if (topic.title != null && !topic.title.isEmpty()) {
@@ -96,13 +97,12 @@ public class Searcher {
 
                     Query anchorUnigram = anchorBuilder.build();
 
-                    // 2. 从 topic 文本里提取 term 列表，用来构造 phrase bigrams
                     List<String> termList = getQueryTermList(topic);
+                    List<String> queryTerms = new ArrayList<>(new LinkedHashSet<>(termList));
+                    List<String> queryBigrams = getQueryBigrams(termList);
 
-                    // 3. 构造 SDM 风格的 query：unigram + phrase bigrams
                     Query sdmQuery = buildSDMQuery(anchorUnigram, termList);
 
-                    // 4. 用 SDM query 做 PRF：检索 top FEEDBACK_DOCS 作反馈文档
                     TopDocs pilot = searcher.search(sdmQuery, FEEDBACK_DOCS);
 
                     Map<String, Double> weights = new HashMap<>();
@@ -127,14 +127,12 @@ public class Searcher {
                         }
                     }
 
-                    // 5. 选出 top K 扩展词
                     List<String> exp = weights.entrySet().stream()
                             .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
                             .limit(EXPANSION_TERMS)
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toList());
 
-                    // 6. 最终查询：SDM(query) + 扩展词
                     BooleanQuery.Builder finalQ = new BooleanQuery.Builder();
                     finalQ.add(sdmQuery, BooleanClause.Occur.SHOULD);
 
@@ -149,16 +147,31 @@ public class Searcher {
                         );
                     }
 
-                    ScoreDoc[] hits = searcher.search(finalQ.build(), numDocs).scoreDocs;
-                    for (int i = 0; i < hits.length; i++) {
-                        Document doc = searcher.doc(hits[i].doc);
+                    int rerankDocs = Math.max(numDocs, RERANK_CANDIDATES);
+                    TopDocs firstPass = searcher.search(finalQ.build(), rerankDocs);
+
+                    List<RerankedDoc> reranked = new ArrayList<>();
+                    for (ScoreDoc sd : firstPass.scoreDocs) {
+                        Document doc = searcher.doc(sd.doc);
                         String docno = doc.get("DOCNO");
+                        String text = doc.get("TEXT");
+                        if (docno == null || text == null) continue;
+
+                        double finalScore = computeRerankScore(text, queryTerms, queryBigrams, sd.score);
+                        reranked.add(new RerankedDoc(sd.doc, docno, finalScore));
+                    }
+
+                    reranked.sort((a, b) -> Double.compare(b.score, a.score));
+
+                    int outN = Math.min(numDocs, reranked.size());
+                    for (int i = 0; i < outN; i++) {
+                        RerankedDoc rd = reranked.get(i);
                         writer.printf(
                                 "%s Q0 %s %d %.4f %s%n",
                                 topic.number,
-                                docno,
+                                rd.docno,
                                 i + 1,
-                                hits[i].score,
+                                rd.score,
                                 RUN_TAG
                         );
                     }
@@ -168,21 +181,16 @@ public class Searcher {
                     e.printStackTrace();
                 }
             }
-            System.out.println("Search Complete (SDM + Entity RM3 phrase).");
+            System.out.println("Search Complete (Two-stage SDM + Entity RM3).");
         } finally {
             reader.close();
         }
     }
 
-    // ===== SDM 相关：unigram + phrase bigrams =====
-
     private Query buildSDMQuery(Query anchorUnigram, List<String> terms) {
         BooleanQuery.Builder sdm = new BooleanQuery.Builder();
-
-        // unigram 部分：用原 anchor query
         sdm.add(new BoostQuery(anchorUnigram, SDM_UNIGRAM_WEIGHT), BooleanClause.Occur.SHOULD);
 
-        // phrase bigrams 部分
         Query phraseQ = buildPhraseBigrams(terms);
         if (phraseQ != null) {
             sdm.add(new BoostQuery(phraseQ, SDM_PHRASE_WEIGHT), BooleanClause.Occur.SHOULD);
@@ -208,7 +216,59 @@ public class Searcher {
         return b.build();
     }
 
-    // ===== 文档分析（用于 PRF term 提取） =====
+    private List<String> getQueryBigrams(List<String> terms) {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        for (int i = 0; i + 1 < terms.size(); i++) {
+            String t1 = terms.get(i);
+            String t2 = terms.get(i + 1);
+            if (t1.equals(t2)) continue;
+            set.add(t1 + " " + t2);
+        }
+        return new ArrayList<>(set);
+    }
+
+    private double computeRerankScore(String text, List<String> queryTerms, List<String> queryBigrams, float firstStageScore) throws IOException {
+        if (text == null || text.isEmpty()) return firstStageScore;
+
+        Set<String> docTerms = new HashSet<>();
+        Set<String> docBigrams = new HashSet<>();
+        int len = 0;
+
+        try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(text))) {
+            CharTermAttribute termAttr = ts.addAttribute(CharTermAttribute.class);
+            ts.reset();
+            String prev = null;
+            while (ts.incrementToken()) {
+                String s = termAttr.toString();
+                len++;
+                docTerms.add(s);
+                if (prev != null) {
+                    docBigrams.add(prev + " " + s);
+                }
+                prev = s;
+            }
+            ts.end();
+        }
+
+        int matchedTerms = 0;
+        for (String qt : queryTerms) {
+            if (docTerms.contains(qt)) matchedTerms++;
+        }
+        double termCov = queryTerms.isEmpty() ? 0.0 : (double) matchedTerms / queryTerms.size();
+
+        int matchedBigrams = 0;
+        for (String bg : queryBigrams) {
+            if (docBigrams.contains(bg)) matchedBigrams++;
+        }
+        double bigramCov = queryBigrams.isEmpty() ? 0.0 : (double) matchedBigrams / queryBigrams.size();
+
+        double lenNorm = len > 0 ? Math.log(1.0 + len) : 0.0;
+
+        return firstStageScore
+                + RERANK_TERM_WEIGHT * termCov
+                + RERANK_BIGRAM_WEIGHT * bigramCov
+                - RERANK_LEN_PENALTY * lenNorm;
+    }
 
     private Map<String, Boolean> analyze(String text) throws IOException {
         Map<String, Boolean> map = new HashMap<>();
@@ -280,9 +340,22 @@ public class Searcher {
             if (l.isEmpty()) continue;
             if (l.contains("not")) continue;
             if (l.contains("irrelevant")) continue;
+            if (l.contains("ignore")) continue;
             sb.append(s).append(" ");
         }
         return sb.toString();
+    }
+
+    private static class RerankedDoc {
+        final int docId;
+        final String docno;
+        final double score;
+
+        RerankedDoc(int docId, String docno, double score) {
+            this.docId = docId;
+            this.docno = docno;
+            this.score = score;
+        }
     }
 }
 
