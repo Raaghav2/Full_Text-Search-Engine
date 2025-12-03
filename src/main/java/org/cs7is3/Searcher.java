@@ -1,8 +1,6 @@
 package org.cs7is3;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringReader;
+import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -16,21 +14,21 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.similarities.BM25Similarity;
-import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
 
 public class Searcher {
 
     private final Analyzer analyzer = new EnglishAnalyzer();
-    private static final String RUN_TAG = "CS7IS3_SDM_Entity_RM3";
+    private static final String RUN_TAG = "CS7IS3_SDM_Entity_RM3_Phrase";
 
+    // RM3 / PRF 参数
     private static final int FEEDBACK_DOCS = 20;
     private static final int EXPANSION_TERMS = 40;
     private static final float EXPANSION_BOOST = 0.5f;
 
+    // 原 query 各部分权重
     private static final float TITLE_BOOST = 3.0f;
     private static final float DESC_BOOST = 1.3f;
     private static final float NARR_BOOST = 0.5f;
@@ -38,11 +36,10 @@ public class Searcher {
     private static final double MAX_DF_RATIO = 0.15;
     private static final int MAX_FEEDBACK_TOKENS = 200;
 
+    // SDM-ish 参数：unigram + phrase
     private static final float SDM_UNIGRAM_WEIGHT = 0.8f;
-    private static final float SDM_ORDERED_WEIGHT = 0.15f;
-    private static final float SDM_UNORDERED_WEIGHT = 0.05f;
-    private static final int ORDERED_WINDOW = 1;
-    private static final int UNORDERED_WINDOW = 4;
+    private static final float SDM_PHRASE_WEIGHT = 0.2f;
+    private static final int PHRASE_SLOP = 1; // 小窗口短语匹配
 
     public void searchTopics(Path indexPath, Path topicsPath, Path outputRun, int numDocs) throws IOException {
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexPath));
@@ -61,10 +58,11 @@ public class Searcher {
         try (PrintWriter writer = new PrintWriter(outputRun.toFile())) {
             for (Topic topic : topics) {
                 try {
-                    BooleanQuery.Builder anchor = new BooleanQuery.Builder();
+                    // 1. 构造 anchor（原始 title/description/narrative 加权）
+                    BooleanQuery.Builder anchorBuilder = new BooleanQuery.Builder();
 
                     if (topic.title != null && !topic.title.isEmpty()) {
-                        anchor.add(
+                        anchorBuilder.add(
                                 new BoostQuery(
                                         parser.parse(QueryParser.escape(topic.title)),
                                         TITLE_BOOST
@@ -74,7 +72,7 @@ public class Searcher {
                     }
 
                     if (topic.description != null && !topic.description.isEmpty()) {
-                        anchor.add(
+                        anchorBuilder.add(
                                 new BoostQuery(
                                         parser.parse(QueryParser.escape(topic.description)),
                                         DESC_BOOST
@@ -86,7 +84,7 @@ public class Searcher {
                     if (topic.narrative != null && !topic.narrative.isEmpty()) {
                         String n = filterNarrative(topic.narrative);
                         if (!n.isEmpty()) {
-                            anchor.add(
+                            anchorBuilder.add(
                                     new BoostQuery(
                                             parser.parse(QueryParser.escape(n)),
                                             NARR_BOOST
@@ -96,10 +94,15 @@ public class Searcher {
                         }
                     }
 
-                    List<String> sdmTerms = getQueryTermList(topic);
-                    Query anchorQuery = anchor.build();
-                    Query sdmQuery = buildSDMQuery(anchorQuery, sdmTerms);
+                    Query anchorUnigram = anchorBuilder.build();
 
+                    // 2. 从 topic 文本里提取 term 列表，用来构造 phrase bigrams
+                    List<String> termList = getQueryTermList(topic);
+
+                    // 3. 构造 SDM 风格的 query：unigram + phrase bigrams
+                    Query sdmQuery = buildSDMQuery(anchorUnigram, termList);
+
+                    // 4. 用 SDM query 做 PRF：检索 top FEEDBACK_DOCS 作反馈文档
                     TopDocs pilot = searcher.search(sdmQuery, FEEDBACK_DOCS);
 
                     Map<String, Double> weights = new HashMap<>();
@@ -108,36 +111,30 @@ public class Searcher {
                     for (ScoreDoc hit : pilot.scoreDocs) {
                         Document d = searcher.doc(hit.doc);
                         String text = d.get("TEXT");
-                        if (text == null) {
-                            continue;
-                        }
+                        if (text == null) continue;
 
                         Map<String, Boolean> terms = analyze(text);
                         for (Map.Entry<String, Boolean> e : terms.entrySet()) {
                             String t = e.getKey();
-                            if (original.contains(t)) {
-                                continue;
-                            }
+                            if (original.contains(t)) continue;
 
                             int df = reader.docFreq(new Term("TEXT", t));
-                            if (df < 2 || df > (int) (totalDocs * MAX_DF_RATIO)) {
-                                continue;
-                            }
+                            if (df < 2 || df > (int) (totalDocs * MAX_DF_RATIO)) continue;
 
                             double w = (Math.log((double) totalDocs / (df + 1)) + 1.0) * hit.score;
-                            if (e.getValue()) {
-                                w *= 1.25;
-                            }
+                            if (e.getValue()) w *= 1.25;
                             weights.put(t, weights.getOrDefault(t, 0.0) + w);
                         }
                     }
 
+                    // 5. 选出 top K 扩展词
                     List<String> exp = weights.entrySet().stream()
                             .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
                             .limit(EXPANSION_TERMS)
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toList());
 
+                    // 6. 最终查询：SDM(query) + 扩展词
                     BooleanQuery.Builder finalQ = new BooleanQuery.Builder();
                     finalQ.add(sdmQuery, BooleanClause.Occur.SHOULD);
 
@@ -171,59 +168,47 @@ public class Searcher {
                     e.printStackTrace();
                 }
             }
-            System.out.println("Search Complete (SDM + Entity-aware RM3).");
+            System.out.println("Search Complete (SDM + Entity RM3 phrase).");
         } finally {
             reader.close();
         }
     }
 
+    // ===== SDM 相关：unigram + phrase bigrams =====
+
     private Query buildSDMQuery(Query anchorUnigram, List<String> terms) {
         BooleanQuery.Builder sdm = new BooleanQuery.Builder();
 
+        // unigram 部分：用原 anchor query
         sdm.add(new BoostQuery(anchorUnigram, SDM_UNIGRAM_WEIGHT), BooleanClause.Occur.SHOULD);
 
-        Query ordered = buildOrderedBigrams(terms);
-        if (ordered != null) {
-            sdm.add(new BoostQuery(ordered, SDM_ORDERED_WEIGHT), BooleanClause.Occur.SHOULD);
-        }
-
-        Query unordered = buildUnorderedWindows(terms);
-        if (unordered != null) {
-            sdm.add(new BoostQuery(unordered, SDM_UNORDERED_WEIGHT), BooleanClause.Occur.SHOULD);
+        // phrase bigrams 部分
+        Query phraseQ = buildPhraseBigrams(terms);
+        if (phraseQ != null) {
+            sdm.add(new BoostQuery(phraseQ, SDM_PHRASE_WEIGHT), BooleanClause.Occur.SHOULD);
         }
 
         return sdm.build();
     }
 
-    private Query buildOrderedBigrams(List<String> terms) {
+    private Query buildPhraseBigrams(List<String> terms) {
         if (terms.size() < 2) return null;
         BooleanQuery.Builder b = new BooleanQuery.Builder();
         for (int i = 0; i + 1 < terms.size(); i++) {
             String t1 = terms.get(i);
             String t2 = terms.get(i + 1);
             if (t1.equals(t2)) continue;
-            SpanQuery s1 = new SpanTermQuery(new Term("TEXT", t1));
-            SpanQuery s2 = new SpanTermQuery(new Term("TEXT", t2));
-            SpanNearQuery span = new SpanNearQuery(new SpanQuery[]{s1, s2}, ORDERED_WINDOW, true);
-            b.add(span, BooleanClause.Occur.SHOULD);
+
+            PhraseQuery.Builder pb = new PhraseQuery.Builder();
+            pb.add(new Term("TEXT", t1), 0);
+            pb.add(new Term("TEXT", t2), 1);
+            pb.setSlop(PHRASE_SLOP);
+            b.add(pb.build(), BooleanClause.Occur.SHOULD);
         }
         return b.build();
     }
 
-    private Query buildUnorderedWindows(List<String> terms) {
-        if (terms.size() < 2) return null;
-        BooleanQuery.Builder b = new BooleanQuery.Builder();
-        for (int i = 0; i + 1 < terms.size(); i++) {
-            String t1 = terms.get(i);
-            String t2 = terms.get(i + 1);
-            if (t1.equals(t2)) continue;
-            SpanQuery s1 = new SpanTermQuery(new Term("TEXT", t1));
-            SpanQuery s2 = new SpanTermQuery(new Term("TEXT", t2));
-            SpanNearQuery span = new SpanNearQuery(new SpanQuery[]{s1, s2}, UNORDERED_WINDOW, false);
-            b.add(span, BooleanClause.Occur.SHOULD);
-        }
-        return b.build();
-    }
+    // ===== 文档分析（用于 PRF term 提取） =====
 
     private Map<String, Boolean> analyze(String text) throws IOException {
         Map<String, Boolean> map = new HashMap<>();
@@ -258,7 +243,6 @@ public class Searcher {
         StringBuilder sb = new StringBuilder();
         if (t.title != null) sb.append(t.title).append(' ');
         if (t.description != null) sb.append(t.description).append(' ');
-        if (t.narrative != null) sb.append(filterNarrative(t.narrative));
 
         try (TokenStream ts = analyzer.tokenStream("TEXT", new StringReader(sb.toString()))) {
             CharTermAttribute term = ts.addAttribute(CharTermAttribute.class);
@@ -296,12 +280,11 @@ public class Searcher {
             if (l.isEmpty()) continue;
             if (l.contains("not")) continue;
             if (l.contains("irrelevant")) continue;
-            if (l.contains("ignore")) continue;
-            if (l.contains("unrelated")) continue;
             sb.append(s).append(" ");
         }
         return sb.toString();
     }
 }
+
 
 
