@@ -15,7 +15,7 @@ import org.apache.lucene.search.*;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.FSDirectory;
 import org.cs7is3.TopicParser.Topic;
-
+import org.apache.lucene.document.Document; 
 public class Searcher {
 
     private final Analyzer analyzer;
