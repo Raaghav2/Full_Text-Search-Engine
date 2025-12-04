@@ -53,10 +53,14 @@ Participants: Raaghav Sawhney, Shreya Shah, Qiming Nie
 
 
 The Implementation Contributions:
+*Note: all members of the team attempted different approaches, we picked the one that worked best in the end
 Raaghav Sawhney: Create the kstem analyzer, utilize the rm3 model for query expansion, optimizing on the custom idf formula for entity recognition, providing the indexer and the searcher as the base source code for the development.
+Shreya Shah: attempt 1: Implemented a custom analyzer with layered filtering and dual stemming, integrate a multi-corpus indexer for the TREC collections, and execute BM25-driven topic retrieval through a boosted multi-field query parser. - approach abandoned 
+             attempt 2: Using a simple English analyzer with stemming and stopword removal, index multiple document collections into Lucene, and run boosted searches on title, description, and narrative to generate top results for each topic in TREC format. - score was not as good as expected
 
 The Report Contributions:
 Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
+Shreya Shah: Contributed to Abstract, Introduction and writing the content for the Relevant Work
 
 
 
