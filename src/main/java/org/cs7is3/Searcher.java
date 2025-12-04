@@ -56,7 +56,6 @@ public class Searcher {
                             if (original.contains(t)) continue;
 
                             int df = reader.docFreq(new Term("TEXT", t));
-                            if (df < 2 || df > (totalDocs * 0.15)) continue;//remove if they occur to frquently
 
                             double w = (Math.log((double)totalDocs / (df + 1)) + 1.0) * hit.score;
                             if (e.getValue()) w *= 1.25;//look if they are an entity
@@ -120,9 +119,13 @@ public class Searcher {
 
     private String filterNarrative(String n) {
         StringBuilder sb = new StringBuilder();
-        for (String s : n.split("[\\s\\.\\;\\n]+")) {
-            String l = s.toLowerCase().replaceAll("[^a-z]", "");
-            if (!l.contains("not") && !l.contains("irrelevant") && !l.isEmpty()) sb.append(s).append(" ");//remove narrative which isnt relevant    
+        String[] sentences = n.split("[\\.\\;\\n]+"); 
+
+        for (String sentence : sentences) {
+            String lower = sentence.toLowerCase();
+            if (!lower.contains("not relevant") && !lower.contains("irrelevant")) {
+                sb.append(sentence).append(" ");
+            }
         }
         return sb.toString();
     }
