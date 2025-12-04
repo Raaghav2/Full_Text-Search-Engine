@@ -32,3 +32,17 @@ Meeting 19.11.25
 Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
   - choose which version to merge into main for the testing
   - waiting with the next steps for the real QREL file
+
+Meeting 26.11.25
+Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
+  - Discussed different approaches for improving the solution: boosting, expansion etc.
+  - Agreed on further individual testing and tuning while maintating stable communication to optimise the workflow
+roles: Raaghav - ideas for optimisation, everyone - assigned the task of attempting improvements to the existing code
+
+Meeting 1.12.25
+Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
+  - Split the report writing
+  - Assign research tasks and assembling literature review
+  - Settle on the final code version
+roles: Milena - report document creation and section split, everyone - assigned sections of the report to write, revise once everyone is done
+
