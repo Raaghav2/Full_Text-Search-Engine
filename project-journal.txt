@@ -46,3 +46,18 @@ Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming 
   - Settle on the final code version
 roles: Milena - report document creation and section split, everyone - assigned sections of the report to write, revise once everyone is done
 
+Meeting 3.12.25
+Participants: Raaghav Sawhney, Shreya Shah, Qiming Nie
+  - Finalize the model which we were going to utilize
+  - Start editing the report, suggest changes to each others work
+
+
+The Implementation Contributions:
+Raaghav Sawhney: Create the kstem analyzer, utilize the rm3 model for query expansion, optimizing on the custom idf formula for entity recognition, providing the indexer and the searcher as the base source code for the development.
+
+The Report Contributions:
+Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
+
+
+
+
