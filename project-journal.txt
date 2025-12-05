@@ -62,7 +62,7 @@ Milena Nastin: created the base code for the indexer and searcher, which was lat
 Qiming Nie: Primarily responsible for developing and integrating LMDirichlet-based retrieval models within the shared Lucene codebase, and implementing related pseudo-relevance feedback (PRF) experiments. Parameter scans were conducted on the μ parameter, number of feedback documents, number of expansion terms, and interpolation weights, with the optimal configuration applied to the final submitted system.
 Ritik Saxena: Performed initial QREL testing, generating the baseline MAP score (0.2326) used to benchmark all improvements, and Contributed iterative
 updates to the indexer and searcher during later development phases. Assisted in running, validating, and debugging large experiment batches.
-Supported evaluation workflows and ensured consistent experimental execution across team members
+
 
 The Report Contributions:
 Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
