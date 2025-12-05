@@ -12,7 +12,7 @@ Meeting 05.11
   - look at out scores from previous assignment and choose best as base code to build on top of
   - look at existing solutions from previous years
   - goals for before next meeting: get to know the code from all the examples we selected, agree on starting base code
-roles: everyone contributing with their results for the assignment 1, Shreya and Raaghav - looking for existing previous solutions, Qiming - best results for a1, likely base code
+roles: everyone contributing with their results for the assignment 1, Shreya, Raaghav and Ritik - looking for existing previous solutions, Qiming - best results for a1, likely base code
 
 Meeting 12.11
 Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Qiming Nie, Ritik Saxena
@@ -32,6 +32,7 @@ Meeting 19.11.25
 Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
   - choose which version to merge into main for the testing
   - waiting with the next steps for the real QREL file
+roles: Ritik - Initial testing on QREL Part 1, obtained a baseline MAP score of 0.2326, which guided subsequent optimisation work.
 
 Meeting 26.11.25
 Participants: Raaghav Sawhney, Milena Nastin, Shreya Shah, Ritik Saxena, Qiming Nie
@@ -59,12 +60,15 @@ Shreya Shah: attempt 1: Implemented a custom analyzer with layered filtering and
              attempt 2: Using a simple English analyzer with stemming and stopword removal, index multiple document collections into Lucene, and run boosted searches on title, description, and narrative to generate top results for each topic in TREC format. - score was not as good as expected
 Milena Nastin: created the base code for the indexer and searcher, which was later used in all of the other implementations; attempted improvements by creating a custom analyzer and a hybrid scoring approach
 Qiming Nie: Primarily responsible for developing and integrating LMDirichlet-based retrieval models within the shared Lucene codebase, and implementing related pseudo-relevance feedback (PRF) experiments. Parameter scans were conducted on the μ parameter, number of feedback documents, number of expansion terms, and interpolation weights, with the optimal configuration applied to the final submitted system.
+Ritik Saxena: Performed initial QREL testing, generating the baseline MAP score (0.2326) used to benchmark all improvements, and Contributed iterative
+updates to the indexer and searcher during later development phases. Assisted in running, validating, and debugging large experiment batches.
+Supported evaluation workflows and ensured consistent experimental execution across team members
 
 The Report Contributions:
 Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
 Shreya Shah: Contributed to Abstract, Introduction and writing the content for the Relevant Work
 Milena Nastin: Created the first draft of thr conclusion, contributed to the Experimental setup and Evaluation sections, created a parameter sweeping script
 Qiming Nie: Drafted and refined the experimental setup and evaluation sections pertaining to analyzers, retrieval models, and query formulas; analyzed and summarized the results of parameter sweep experiments.
-
+Ritik Saxena: I contributed to writing the Experimental Setup and System Design sections of the report. I also reviewed the overall report and helped ensure the content was clear, consistent, and well-structured.
 
 
