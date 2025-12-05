@@ -68,7 +68,7 @@ The Report Contributions:
 Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
 Shreya Shah: Contributed to Abstract, Introduction and writing the content for the Relevant Work
 Milena Nastin: Created the first draft of thr conclusion, contributed to the Experimental setup and Evaluation sections, created a parameter sweeping script
-Qiming Nie: Drafted and refined the experimental setup and evaluation sections pertaining to analyzers, retrieval models, and query formulas; analyzed and summarized the results of parameter sweep experiments.
+Qiming Nie: Drafted and refined the evaluation sections pertaining to analyzers, retrieval models, and query formulas; analyzed and summarized the results of parameter sweep experiments.
 Ritik Saxena: Contributed to writing the Experimental Setup and System Design sections of the report. I also reviewed the overall report and helped ensure the content was clear, consistent, and well-structured.
 
 
