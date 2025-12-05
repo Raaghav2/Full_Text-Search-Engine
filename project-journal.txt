@@ -58,12 +58,13 @@ Raaghav Sawhney: Create the kstem analyzer, utilize the rm3 model for query expa
 Shreya Shah: attempt 1: Implemented a custom analyzer with layered filtering and dual stemming, integrate a multi-corpus indexer for the TREC collections, and execute BM25-driven topic retrieval through a boosted multi-field query parser. - approach abandoned 
              attempt 2: Using a simple English analyzer with stemming and stopword removal, index multiple document collections into Lucene, and run boosted searches on title, description, and narrative to generate top results for each topic in TREC format. - score was not as good as expected
 Milena Nastin: created the base code for the indexer and searcher, which was later used in all of the other implementations; attempted improvements by creating a custom analyzer and a hybrid scoring approach
+Qiming Nie: Primarily responsible for developing and integrating LMDirichlet-based retrieval models within the shared Lucene codebase, and implementing related pseudo-relevance feedback (PRF) experiments. Parameter scans were conducted on the μ parameter, number of feedback documents, number of expansion terms, and interpolation weights, with the optimal configuration applied to the final submitted system.
 
 The Report Contributions:
 Raaghav Sawhney: Contributed to the Abstract,Introduction,Implementation,Experimental Setup,Helped in providing literature for Relevant Work,Evaluating models and analysers with parameter sweeping, Conclusion.
 Shreya Shah: Contributed to Abstract, Introduction and writing the content for the Relevant Work
 Milena Nastin: Created the first draft of thr conclusion, contributed to the Experimental setup and Evaluation sections, created a parameter sweeping script
-
+Qiming Nie: Drafted and refined the experimental setup and evaluation sections pertaining to analyzers, retrieval models, and query formulas; analyzed and summarized the results of parameter sweep experiments.
 
 
 
